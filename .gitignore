@@ -1,0 +1,15 @@
+# 原始数据库留在本机，仓库提交网页数据文件 data.js。
+*.xlsx
+*.xls
+*.xlsm
+~$*
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+venv/
+.env
+.env.*
+data.json
+extraction_report.json
+dashboard/

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="煤炭价格、港口库存、运输、发电与供给数据，以及周度指标追踪。">
+  <meta name="color-scheme" content="light">
+  <title>中国煤炭高频数据看板</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./data.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到数据内容</a>
+  <aside class="sidebar">
+    <a class="brand" href="#top" aria-label="煤炭数据看板首页"><span class="brand-mark" aria-hidden="true">C</span><span>煤炭数据<span class="brand-en">CHINA COAL MONITOR</span></span></a>
+    <span class="nav-label">数据导航</span>
+    <nav aria-label="页面导航">
+      <a class="nav-item active" href="#top"><span aria-hidden="true">◈</span> 数据总览</a>
+      <a class="nav-item" href="#chart-price"><span aria-hidden="true">↗</span> 价格走势</a>
+      <a class="nav-item" href="#chart-inventory"><span aria-hidden="true">▤</span> 港口库存</a>
+      <a class="nav-item" href="#chart-transport"><span aria-hidden="true">⇄</span> 港口运输</a>
+      <a class="nav-item" href="#chart-power"><span aria-hidden="true">ϟ</span> 电力需求</a>
+      <a class="nav-item" href="#chart-supply"><span aria-hidden="true">▥</span> 煤炭供给</a>
+      <a class="nav-item" href="#weekly"><span aria-hidden="true">≡</span> 周报指标</a>
+    </nav>
+    <div class="sidebar-foot"><span class="live-dot" aria-hidden="true"></span> Excel 数据快照<p id="source-name">正在加载数据</p></div>
+  </aside>
+  <main id="main">
+    <header class="page-head" id="top">
+      <div><p class="eyebrow">能源研究 / 高频追踪</p><h1>中国煤炭高频数据看板<span class="title-dot">.</span></h1><p class="description">从价格、库存到供需，追踪煤炭市场的变化。</p></div>
+      <div class="update-stamp"><span>数据库日期</span><strong id="database-date">—</strong><small>周报日期 <span id="weekly-date">—</span></small></div>
+    </header>
+    <div id="load-error" class="error-box" role="alert" hidden></div>
+    <section aria-labelledby="snapshot-title">
+      <div class="section-heading compact"><h2 id="snapshot-title">周度快照</h2><span>数值来自本期周报</span></div>
+      <div id="summary-cards" class="summary-grid"></div>
+    </section>
+    <details id="quality-notes" class="quality-notes" hidden>
+      <summary><span class="note-mark" aria-hidden="true">i</span><span id="quality-summary">数据说明</span><span class="expand-label">展开查看</span></summary>
+      <ul id="quality-list"></ul>
+    </details>
+    <section aria-labelledby="trends-title" class="trends-section">
+      <div class="section-heading"><div><p class="eyebrow">MARKET TRENDS</p><h2 id="trends-title">市场趋势</h2></div><span>各序列保留自身更新日期</span></div>
+      <form id="date-filter" class="filter-bar">
+        <span class="filter-label">图表区间</span>
+        <div class="range-buttons" role="group" aria-label="快捷日期范围"><button type="button" data-years="1" class="selected" aria-pressed="true">近一年</button><button type="button" data-years="3" aria-pressed="false">近三年</button><button type="button" data-years="all" aria-pressed="false">全部</button></div>
+        <div class="date-fields"><label><span class="sr-only">开始日期</span><input id="start-date" type="date" required></label><span aria-hidden="true">—</span><label><span class="sr-only">结束日期</span><input id="end-date" type="date" required></label><button class="apply-button" type="submit">应用</button></div>
+        <p id="date-error" class="date-error" role="alert" hidden></p>
+      </form>
+      <div id="charts" class="chart-grid"></div>
+    </section>
+    <section id="weekly" aria-labelledby="weekly-title" class="weekly-section">
+      <div class="section-heading"><div><p class="eyebrow">WEEKLY INDICATORS</p><h2 id="weekly-title">周报指标明细</h2></div><button type="button" id="download-csv" class="text-button">下载当前表格 CSV <span aria-hidden="true">↓</span></button></div>
+      <div class="weekly-panel">
+        <div class="table-tools"><div id="section-tabs" class="section-tabs" role="group" aria-label="指标分类"></div><label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">搜索指标</span><input id="search" type="search" placeholder="搜索指标、单位或备注"></label></div>
+        <div class="table-scroll" tabindex="0" aria-label="可横向滚动的周报指标表"><table><caption class="sr-only">本期周报指标及前期、上年同期对比</caption><thead><tr><th scope="col">指标 / 单位</th><th scope="col">本期</th><th scope="col">前期</th><th scope="col">环比</th><th scope="col">去年同期</th><th scope="col">同比</th><th scope="col">备注</th></tr></thead><tbody id="metrics-body"></tbody></table></div>
+        <div class="table-footer"><span id="table-count"></span><span>百分比变化与百分点变化分别标注；缺失值显示为 —。</span></div>
+      </div>
+    </section>
+    <footer class="page-footer"><span id="generated-at"></span><span>来源：煤炭 Excel 数据库 · 各指标口径以原表为准</span></footer>
+  </main>
+</body>
+</html>
