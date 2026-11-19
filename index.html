@@ -8,6 +8,7 @@
   <title>中国煤炭高频数据看板</title>
   <link rel="stylesheet" href="./styles.css">
   <script defer src="./data.js"></script>
+  <script defer src="./thermal.js"></script>
   <script defer src="./app.js"></script>
 </head>
 <body>
@@ -15,7 +16,7 @@
   <aside class="sidebar">
     <a class="brand" href="#top" aria-label="煤炭数据看板首页"><span class="brand-mark" aria-hidden="true">C</span><span>煤炭数据<span class="brand-en">CHINA COAL MONITOR</span></span></a>
     <span class="nav-label">数据导航</span>
-    <nav aria-label="页面导航">
+    <nav id="overview-nav" aria-label="总览导航">
       <a class="nav-item active" href="#top"><span aria-hidden="true">◈</span> 数据总览</a>
       <a class="nav-item" href="#chart-price"><span aria-hidden="true">↗</span> 价格走势</a>
       <a class="nav-item" href="#chart-inventory"><span aria-hidden="true">▤</span> 港口库存</a>
@@ -32,6 +33,11 @@
       <div class="update-stamp"><span>数据库日期</span><strong id="database-date">—</strong><small>周报日期 <span id="weekly-date">—</span></small></div>
     </header>
     <div id="load-error" class="error-box" role="alert" hidden></div>
+    <nav class="view-switch" aria-label="看板板块">
+      <a id="view-overview" href="#top" aria-current="page">总览</a>
+      <a id="view-thermal" href="#thermal">动力煤</a>
+    </nav>
+    <div id="overview-view">
     <section aria-labelledby="snapshot-title">
       <div class="section-heading compact"><h2 id="snapshot-title">周度快照</h2><span>数值来自本期周报</span></div>
       <div id="summary-cards" class="summary-grid"></div>
@@ -57,6 +63,50 @@
         <div class="table-scroll" tabindex="0" aria-label="可横向滚动的周报指标表"><table><caption class="sr-only">本期周报指标及前期、上年同期对比</caption><thead><tr><th scope="col">指标 / 单位</th><th scope="col">本期</th><th scope="col">前期</th><th scope="col">环比</th><th scope="col">去年同期</th><th scope="col">同比</th><th scope="col">备注</th></tr></thead><tbody id="metrics-body"></tbody></table></div>
         <div class="table-footer"><span id="table-count"></span><span>百分比变化与百分点变化分别标注；缺失值显示为 —。</span></div>
       </div>
+    </section>
+    </div>
+    <section id="thermal-view" aria-labelledby="thermal-title" hidden>
+      <div class="section-heading"><h2 id="thermal-title">动力煤</h2></div>
+      <nav id="thermal-groups" class="thermal-groups" aria-label="动力煤图表分组"></nav>
+      <p id="thermal-unavailable" class="error-box" hidden>当前数据文件只包含总览。运行更新脚本生成新版 data.js 后，即可查看动力煤图表。</p>
+      <article id="thermal-card" class="chart-card thermal-card" hidden>
+        <div class="thermal-toolbar">
+          <label for="thermal-panel">图项 <select id="thermal-panel"></select></label>
+          <div class="view-switch compact-switch" role="group" aria-label="走势图模式">
+            <button type="button" id="thermal-continuous" aria-pressed="true">连续走势</button>
+            <button type="button" id="thermal-seasonal" aria-pressed="false">年度对比</button>
+          </div>
+          <label id="thermal-series-field" for="thermal-series" hidden>指标 <select id="thermal-series"></select></label>
+        </div>
+        <form id="thermal-date-filter" class="filter-bar thermal-filters">
+          <div id="thermal-presets" class="range-buttons" role="group" aria-label="动力煤快捷日期范围">
+            <button type="button" data-range="1">近一年</button><button type="button" data-range="3">近三年</button><button type="button" data-range="6">近六年</button><button type="button" data-range="all">全部</button>
+          </div>
+          <div class="date-fields">
+            <label for="thermal-start"><span class="sr-only">动力煤开始日期</span><input id="thermal-start" type="date" required></label>
+            <span aria-hidden="true">—</span>
+            <label for="thermal-end"><span class="sr-only">动力煤结束日期</span><input id="thermal-end" type="date" required></label>
+            <button class="apply-button" type="submit">应用</button>
+          </div>
+          <p id="thermal-date-error" class="date-error" role="alert" hidden></p>
+        </form>
+        <form id="thermal-season-filter" class="filter-bar thermal-filters" hidden>
+          <div id="thermal-years" class="thermal-years" role="group" aria-label="对比年份"></div>
+          <div class="thermal-months">
+            <label for="thermal-month-start">起始月 <select id="thermal-month-start"></select></label>
+            <label for="thermal-month-end">结束月 <select id="thermal-month-end"></select></label>
+            <button class="apply-button" type="submit">应用</button>
+          </div>
+          <p id="thermal-month-error" class="date-error" role="alert" hidden></p>
+        </form>
+        <div class="chart-header">
+          <div><h3 id="thermal-chart-name"></h3><p id="thermal-chart-note" class="chart-subtitle"></p></div>
+          <span id="thermal-unit" class="chart-unit"></span>
+        </div>
+        <div id="thermal-legend" class="chart-legend"></div>
+        <div id="thermal-plot" class="plot thermal-plot"></div>
+        <ul id="thermal-sources" class="thermal-sources" aria-label="指标来源及日期"></ul>
+      </article>
     </section>
     <footer class="page-footer"><span id="generated-at"></span><span>来源：煤炭 Excel 数据库 · 各指标口径以原表为准</span></footer>
   </main>

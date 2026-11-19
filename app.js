@@ -1,4 +1,4 @@
-(() => {
+(async () => {
   'use strict';
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -21,6 +21,14 @@
   };
 
   try {
+    if (window.COAL_DATA_READY) {
+      try {
+        await window.COAL_DATA_READY;
+      } catch (error) {
+        $('#thermal-unavailable').textContent = '动力煤明细加载失败，请刷新页面重试。总览仍可查看。';
+        console.warn(error);
+      }
+    }
     const data = window.COAL_DATA;
     if (!data || !data.meta || !Array.isArray(data.charts) || !Array.isArray(data.weeklyMetrics)) {
       throw new Error('未能加载看板数据。请确认 data.js 与 index.html 位于同一文件夹，再刷新页面。');
@@ -86,7 +94,7 @@
       $('#start-date').value = state.start;
       $('#end-date').value = state.end;
       $('#date-error').hidden = true;
-      $$('.range-buttons button').forEach(button => {
+      $$('#date-filter .range-buttons button').forEach(button => {
         const selected = button.dataset.years === String(years);
         button.classList.toggle('selected', selected);
         button.setAttribute('aria-pressed', String(selected));
@@ -115,10 +123,10 @@
       return ([1, 2, 2.5, 5, 10].find(value => value * magnitude >= rough) || 10) * magnitude;
     }
 
-    function renderPlot(chart, plot) {
+    function renderPlot(chart, plot, options = {}) {
       plot.replaceChildren();
-      const enabled = chart.series.filter(series => !hiddenSeries.get(chart.id).has(series.name));
-      const start = timestamp(state.start), end = timestamp(state.end);
+      const enabled = options.series ?? chart.series.filter(series => !hiddenSeries.get(chart.id).has(series.name));
+      const [start, end] = options.bounds ?? [timestamp(state.start), timestamp(state.end)];
       const visible = enabled.map(series => ({ ...series,
         points: series.data.filter(point => point.time >= start && point.time <= end) }));
       const values = visible.flatMap(series => series.points.filter(point => finite(point.value)).map(point => point.value));
@@ -127,25 +135,27 @@
         return;
       }
       const width = Math.max(260, plot.clientWidth), height = plot.clientHeight || 244;
-      const margin = { left: 51, right: 12, top: 13, bottom: 28 };
+      const margin = { left: options.bounds ? 62 : 51, right: 12, top: 13, bottom: 28 };
       const innerWidth = width - margin.left - margin.right;
       const innerHeight = height - margin.top - margin.bottom;
       const minimum = Math.min(...values), maximum = Math.max(...values);
       const span = maximum - minimum || Math.abs(maximum) * 0.1 || 1;
       const step = niceStep(span * 1.15);
-      const axisMin = Math.max(0, Math.floor((minimum - span * 0.06) / step) * step);
+      const lower = Math.floor((minimum - span * 0.06) / step) * step;
+      const axisMin = options.bounds && lower < 0 && minimum < 0 ? lower : Math.max(0, lower);
       const axisMax = Math.ceil((maximum + span * 0.06) / step) * step;
-      const x = value => margin.left + (value - start) / (end - start || 1) * innerWidth;
+      const x = value => margin.left + (start === end ? 0.5 : (value - start) / (end - start)) * innerWidth;
       const y = value => margin.top + (axisMax - value) / (axisMax - axisMin || 1) * innerHeight;
       const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', tabindex: '0',
-        'aria-label': `${chart.title}，${state.start}至${state.end}，单位${chart.unit}。使用左右方向键查看日期数据。` });
+        'aria-label': `${chart.title}，${options.rangeLabel ?? `${state.start}至${state.end}`}，单位${chart.unit}。使用左右方向键查看日期数据。` });
       svg.append(svgNode('title', {}, `${chart.title}（${chart.unit}）`));
       for (let tick = axisMin; tick <= axisMax + step * 0.01; tick += step) {
         svg.append(svgNode('line', { x1: margin.left, x2: width - margin.right, y1: y(tick), y2: y(tick), class: 'grid-line' }));
-        svg.append(svgNode('text', { x: margin.left - 10, y: y(tick) + 3, 'text-anchor': 'end' }, number(tick)));
+        svg.append(svgNode('text', { x: margin.left - 10, y: y(tick) + 3, 'text-anchor': 'end' },
+          options.formatValue ? options.formatValue(tick) : number(tick)));
       }
-      dateTicks(start, end, width < 430 ? 3 : 5).forEach((tick, index, ticks) => {
-        const label = iso(tick).slice(0, 7).replace('-', '.');
+      (options.ticks ? options.ticks(width) : dateTicks(start, end, width < 430 ? 3 : 5)
+        .map(tick => [tick, iso(tick).slice(0, 7).replace('-', '.')])).forEach(([tick, label], index, ticks) => {
         svg.append(svgNode('text', { x: x(tick), y: height - 7,
           'text-anchor': index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle' }, label));
       });
@@ -153,19 +163,23 @@
         let path = '', drawing = false;
         series.points.forEach(point => {
           if (!finite(point.value)) { drawing = false; return; }
+          if (point.breakBefore) drawing = false;
           path += `${drawing ? 'L' : 'M'}${x(point.time).toFixed(2)},${y(point.value).toFixed(2)} `;
           drawing = true;
         });
         svg.append(svgNode('path', { d: path, class: 'data-line', stroke: series.color }));
         const validPoints = series.points.filter(point => finite(point.value));
-        if (validPoints.length === 1) svg.append(svgNode('circle', { cx: x(validPoints[0].time), cy: y(validPoints[0].value), r: 3, fill: series.color }));
+        const isolated = options.bounds ? series.points.filter((point, index, points) => finite(point.value) &&
+          (point.breakBefore || !finite(points[index - 1]?.value)) &&
+          (points[index + 1]?.breakBefore || !finite(points[index + 1]?.value))) : validPoints.length === 1 ? validPoints : [];
+        isolated.forEach(point => svg.append(svgNode('circle', { cx: x(point.time), cy: y(point.value), r: 3, fill: series.color })));
       });
       const crosshair = svgNode('line', { x1: 0, x2: 0, y1: margin.top, y2: height - margin.bottom, class: 'crosshair', style: 'display:none' });
       svg.append(crosshair);
       const tooltip = node('div', 'plot-tooltip');
       tooltip.setAttribute('role', 'tooltip');
       const dates = [...new Set(visible.flatMap(series => series.points.map(point => point.time)))].sort((a, b) => a - b);
-      const byDate = visible.map(series => new Map(series.points.map(point => [point.time, point.value])));
+      const byDate = visible.map(series => new Map(series.points.map(point => [point.time, point])));
       let focusIndex = dates.length - 1;
       function showTooltip(index, pointerY = 30) {
         if (!dates.length) return;
@@ -174,25 +188,30 @@
         crosshair.style.display = '';
         crosshair.setAttribute('x1', position);
         crosshair.setAttribute('x2', position);
-        tooltip.replaceChildren(node('time', '', iso(day)));
-        visible.forEach((series, seriesIndex) => {
-          const row = node('div', 'tooltip-row');
-          row.append(node('span', '', series.name), node('strong', '', number(byDate[seriesIndex].get(day))));
-          tooltip.append(row);
-        });
+        if (options.fillTooltip) options.fillTooltip(tooltip, visible, byDate, day);
+        else {
+          tooltip.replaceChildren(node('time', '', iso(day)));
+          visible.forEach((series, seriesIndex) => {
+            const row = node('div', 'tooltip-row');
+            row.append(node('span', '', series.name), node('strong', '', number(byDate[seriesIndex].get(day)?.value)));
+            tooltip.append(row);
+          });
+        }
         tooltip.style.display = 'block';
         tooltip.style.left = `${Math.max(4, Math.min(width - tooltip.offsetWidth - 4, position + 12))}px`;
         tooltip.style.top = `${Math.max(3, Math.min(height - tooltip.offsetHeight - 4, pointerY))}px`;
       }
       function hideTooltip() { tooltip.style.display = 'none'; crosshair.style.display = 'none'; }
-      svg.addEventListener('pointermove', event => {
+      function pointAt(event) {
         const box = svg.getBoundingClientRect();
         const mouseX = (event.clientX - box.left) / box.width * width;
         if (mouseX < margin.left || mouseX > width - margin.right) { hideTooltip(); return; }
         const requested = start + (mouseX - margin.left) / innerWidth * (end - start);
         showTooltip(nearestIndex(dates, requested), event.clientY - box.top + 10);
-      });
-      svg.addEventListener('pointerleave', hideTooltip);
+      }
+      svg.addEventListener('pointermove', pointAt);
+      if (options.fillTooltip) svg.addEventListener('pointerdown', pointAt);
+      svg.addEventListener('pointerleave', event => { if (event.pointerType !== 'touch') hideTooltip(); });
       svg.addEventListener('blur', hideTooltip);
       svg.addEventListener('keydown', event => {
         if (event.key === 'Escape') hideTooltip();
@@ -242,7 +261,10 @@
       charts.set(chart.id, { chart, plot });
     });
 
-    function renderCharts() { charts.forEach(({ chart, plot }) => renderPlot(chart, plot)); }
+    function renderCharts() {
+      if ($('#overview-view')?.hidden) return;
+      charts.forEach(({ chart, plot }) => renderPlot(chart, plot));
+    }
     let resizeTimer;
     const observer = new ResizeObserver(() => {
       clearTimeout(resizeTimer);
@@ -302,7 +324,7 @@
     }
 
     $('#search').addEventListener('input', event => { state.search = event.target.value; renderTable(); });
-    $$('.range-buttons button').forEach(button => button.addEventListener('click', () => selectRange(button.dataset.years)));
+    $$('#date-filter .range-buttons button').forEach(button => button.addEventListener('click', () => selectRange(button.dataset.years)));
     $('#date-filter').addEventListener('submit', event => {
       event.preventDefault();
       const start = $('#start-date').value, end = $('#end-date').value;
@@ -314,7 +336,7 @@
       state.start = start;
       state.end = end;
       $('#date-error').hidden = true;
-      $$('.range-buttons button').forEach(button => {
+      $$('#date-filter .range-buttons button').forEach(button => {
         button.classList.remove('selected');
         button.setAttribute('aria-pressed', 'false');
       });
@@ -347,6 +369,7 @@
     }));
     selectRange('1');
     renderTable();
+    window.initThermalDashboard?.({ data: data.thermalCoal, renderPlot, node, timestamp, iso, number, renderOverview: renderCharts });
   } catch (error) {
     const box = $('#load-error');
     box.hidden = false;

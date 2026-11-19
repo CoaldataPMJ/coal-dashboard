@@ -18,11 +18,15 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from zipfile import BadZipFile
 from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from openpyxl.utils.datetime import CALENDAR_WINDOWS_1900, from_excel
+from openpyxl.utils.exceptions import InvalidFileException
+from thermal_data import extract_thermal, thermal_specs
 
 
 ROOT = Path(__file__).resolve().parent
@@ -214,14 +218,19 @@ def discover_source(source=None, search_dirs=None):
     return max(candidates, key=lambda item: item[0])[1]
 
 
-def load_sources(source):
-    required = {"Table of Contents": 2, "周报输出": 10}
+def source_specs():
     for *_, mapping in CHARTS:
         for specs in mapping.values():
-            for spec in specs:
-                columns = [spec.date_column, *spec.value_columns]
-                columns += [coordinate_from_string(address)[0] for address, _ in spec.headers]
-                required[spec.sheet] = max(required.get(spec.sheet, 0), *(column_index_from_string(c) for c in columns))
+            yield from specs
+    yield from thermal_specs()
+
+
+def load_sources(source):
+    required = {"Table of Contents": 2, "周报输出": 10}
+    for spec in source_specs():
+        columns = [spec.date_column, *spec.value_columns]
+        columns += [coordinate_from_string(address)[0] for address, _ in spec.headers]
+        required[spec.sheet] = max(required.get(spec.sheet, 0), *(column_index_from_string(c) for c in columns))
     book = load_workbook(source, read_only=True, data_only=True, keep_links=False)
     try:
         missing = sorted(set(required) - set(book.sheetnames))
@@ -245,14 +254,12 @@ def load_sources(source):
 
 def validate_layout(sheets):
     failures = []
-    for *_, mapping in CHARTS:
-        for specs in mapping.values():
-            for spec in specs:
-                sheet = sheets[spec.sheet]
-                for address, expected in spec.headers:
-                    actual = sheet.cell(address)
-                    if normalize(actual) != normalize(expected):
-                        failures.append(f"{spec.sheet}!{address} 应为 {expected!r}，实际为 {actual!r}")
+    for spec in source_specs():
+        sheet = sheets[spec.sheet]
+        for address, expected in spec.headers:
+            actual = sheet.cell(address)
+            if normalize(actual) != normalize(expected):
+                failures.append(f"{spec.sheet}!{address} 应为 {expected!r}，实际为 {actual!r}")
     for address, expected in (("G5", "周环比"), ("I5", "同比"), ("J5", "备注")):
         actual = sheets["周报输出"].cell(address)
         if normalize(actual) != normalize(expected):
@@ -438,37 +445,40 @@ def extract_dashboard(source, years=6, supply_years=8):
                        "frequency": frequency, "series": series})
         chart_reports.append({"id": chart_id, "series": series_reports})
     generated_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
+    thermal_coal, thermal_report = extract_thermal(sheets, epoch, as_date, column_index_from_string)
     data = {
         "meta": {"title": "中国煤炭高频数据看板", "source": source.name,
                  "databaseDate": update_date.isoformat(),
                  **{name: value.isoformat() for name, value in weekly_dates.items()},
                  "generatedAt": generated_at, "timezone": "Asia/Shanghai", "sheetCount": sheet_count,
                  "sourceFileDate": version_date.isoformat() if version_date else None,
-                 "databaseDateSource": date_source, "schemaVersion": "2.0", "historyYears": years,
+                 "databaseDateSource": date_source, "schemaVersion": "2.1", "historyYears": years,
                  "supplyHistoryYears": supply_years,
                  "formulaPolicy": "使用Excel已保存的计算结果；不重新计算公式"},
         "summaryCards": [by_name[name] for name in SUMMARY_METRICS],
-        "weeklyMetrics": metrics, "charts": charts, "warnings": issues,
+        "weeklyMetrics": metrics, "charts": charts, "warnings": issues, "thermalCoal": thermal_coal,
     }
     report = {"source": str(source), "meta": data["meta"], "summaryCards": len(data["summaryCards"]),
               "weeklyMetrics": len(metrics), "availableWeeklyMetrics": sum(m["status"] == "ok" for m in metrics),
               "weeklySections": list(dict.fromkeys(m["section"] for m in metrics)),
-              "charts": chart_reports, "warnings": issues}
+              "charts": chart_reports, "warnings": issues, "thermalCoal": thermal_report}
     return data, report
 
 
 def write_outputs(data, report, output_dir):
     output_dir = Path(output_dir).expanduser().resolve()
-    # 全部序列化成功后再写文件，禁止生成含NaN/Infinity的非标准JSON。
     compact = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     texts = {
-        "data.js": "window.COAL_DATA = " + compact + ";\n",
-        "data.json": json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        "data.json": compact + "\n",
         "extraction_report.json": json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        "data.js": "window.COAL_DATA = " + compact + ";\n",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    for name, text in texts.items():
-        (output_dir / name).write_text(text, encoding="utf-8")
+    with TemporaryDirectory(dir=output_dir) as staging:
+        for name, text in texts.items():
+            (Path(staging) / name).write_text(text, encoding="utf-8")
+        for name in texts:
+            (Path(staging) / name).replace(output_dir / name)
     return output_dir / "data.js"
 
 
@@ -483,13 +493,14 @@ def main(argv=None):
         source = discover_source(args.source)
         data, report = extract_dashboard(source, args.years, args.supply_years)
         output = write_outputs(data, report, args.output_dir)
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, BadZipFile, InvalidFileException) as error:
         print(f"提取失败：{error}", file=sys.stderr)
         return 1
     print(json.dumps({"source": str(source), "output": str(output),
         "databaseDate": data["meta"]["databaseDate"], "weeklyDate": data["meta"]["weeklyDate"],
         "summaryCards": report["summaryCards"], "weeklyMetrics": report["weeklyMetrics"],
         "availableWeeklyMetrics": report["availableWeeklyMetrics"],
+        "thermalGroups": len(data["thermalCoal"]["groups"]), "thermalSeries": len(data["thermalCoal"]["series"]),
         "charts": {chart["id"]: {series["name"]: len(series["data"]) for series in chart["series"]} for chart in data["charts"]},
         "warnings": report["warnings"]}, ensure_ascii=False, indent=2))
     return 0

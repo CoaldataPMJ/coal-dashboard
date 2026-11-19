@@ -7,3 +7,38 @@
 @media(max-width:740px){main{padding:24px 16px}.page-head{gap:14px;align-items:flex-start}.page-head h1{font-size:24px;max-width:270px}.description{font-size:11px;max-width:260px}.update-stamp{padding-left:12px;min-width:116px;margin-top:5px}.update-stamp strong{font-size:16px}.update-stamp small{font-size:9px}.update-stamp>span{font-size:9px}.eyebrow{font-size:9px}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.summary-card{padding:17px 16px}.card-label{font-size:11px}.card-number{font-size:27px}.card-foot{margin-top:12px}.chart-grid{grid-template-columns:1fr;gap:15px}.chart-card:last-child{grid-column:auto}.chart-card{padding:18px 18px 12px}.plot{height:245px}.filter-bar{gap:12px;padding:12px}.date-fields{width:100%;margin-left:0}.date-fields label{min-width:0;flex:1}.date-fields input{width:100%;min-width:0}.section-heading>span{font-size:9px}.quality-notes summary{align-items:flex-start;font-size:10px;gap:7px}.expand-label{font-size:9px}.note-mark{margin-top:1px}.sidebar{padding:13px 16px;gap:5px}.sidebar nav a:nth-child(2),.sidebar nav a:nth-child(6){display:none}.nav-item{font-size:10px}.table-tools{padding:14px;gap:12px}.section-tabs{gap:2px}.section-tabs button{padding:5px 8px;font-size:10px}.search-box{width:100%}.table-footer{flex-direction:column;gap:4px;padding:11px 15px}.page-footer{flex-direction:column;gap:4px;margin-top:24px;font-size:9px}.section-heading h2{font-size:18px}.text-button{font-size:10px;padding:6px 9px}.summary-card:before{left:16px}.chart-foot{font-size:8px}.trends-section .section-heading{margin-top:26px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
 @media print{.sidebar,.filter-bar,.table-tools,.text-button,.quality-notes{display:none}main{margin:0;padding:0}.chart-card,.summary-card{break-inside:avoid}.table-scroll{max-height:none;overflow:visible}.page-head{margin-bottom:15px}body{background:white}.plot{height:210px}}
+
+[hidden] { display: none !important; }
+.view-switch { display: inline-flex; gap: 3px; padding: 4px; margin: 0 0 22px; border: 1px solid var(--line); border-radius: 8px; background: #eaf0f1; }
+.view-switch a, .view-switch button { padding: 6px 18px; border: 0; border-radius: 5px; background: transparent; color: #526672; font: inherit; }
+.view-switch [aria-current], .view-switch [aria-pressed="true"] { background: #fff; color: var(--teal); font-weight: 650; box-shadow: 0 1px 4px #152f3b14; }
+.compact-switch { margin: 0; font-size: 12px; }
+.compact-switch button { padding-inline: 12px; }
+#thermal-view .section-heading { margin: 0 0 13px; }
+.thermal-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 15px; }
+.thermal-groups a { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; color: #526672; font-size: 12px; }
+.thermal-groups a:hover, .thermal-groups a[aria-current] { color: #fff; background: var(--teal); border-color: var(--teal); }
+.thermal-toolbar { display: flex; gap: 10px 15px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.thermal-toolbar label, .thermal-months label { display: inline-flex; align-items: center; gap: 6px; color: #526672; font-size: 12px; }
+.thermal-toolbar select, .thermal-months select { max-width: 100%; font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; }
+.thermal-filters { background: #fcfdfd; }
+.thermal-years, .thermal-months { display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: center; }
+.thermal-year { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.thermal-year input { accent-color: var(--teal); }
+.thermal-sources { border-top: 1px solid var(--line); margin: 8px 0 0; padding: 9px 0 0; list-style: none; color: #627681; font-size: 10px; overflow-wrap: anywhere; }
+.thermal-sources li + li { margin-top: 3px; }
+.thermal-card:last-child .thermal-plot { height: clamp(300px, 47vw, 510px); }
+.thermal-tooltip { width: min(355px, 100%); padding: 8px 10px; }
+.thermal-tooltip time { margin: 0; }
+.thermal-tip-row { padding: 3px 0; border-bottom: 1px solid #edf1f2; }
+.thermal-tip-row:last-child { border-bottom: 0; }
+.thermal-tip-row small { display: inline-block; margin-right: 8px; color: #526672; line-height: 1.35; }
+.thermal-tip-row small:first-of-type { display: block; }
+@media (max-width: 490px) {
+  .thermal-card { padding-inline: 12px; }
+  .thermal-groups { gap: 5px; }
+  .thermal-groups a { padding: 5px 8px; }
+  .thermal-filters .range-buttons button { padding-inline: 8px; }
+  .thermal-tooltip { font-size: 10px; }
+}
+@media print { .view-switch, .thermal-toolbar, .thermal-groups { display: none; } }
