@@ -26,7 +26,8 @@ from openpyxl import load_workbook
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from openpyxl.utils.datetime import CALENDAR_WINDOWS_1900, from_excel
 from openpyxl.utils.exceptions import InvalidFileException
-from thermal_data import extract_thermal, thermal_specs
+from coking_data import COKING_GROUPS, extract_coking
+from thermal_data import THERMAL_GROUPS, detail_specs, extract_thermal
 
 
 ROOT = Path(__file__).resolve().parent
@@ -222,7 +223,8 @@ def source_specs():
     for *_, mapping in CHARTS:
         for specs in mapping.values():
             yield from specs
-    yield from thermal_specs()
+    yield from detail_specs(THERMAL_GROUPS)
+    yield from detail_specs(COKING_GROUPS)
 
 
 def load_sources(source):
@@ -446,22 +448,24 @@ def extract_dashboard(source, years=6, supply_years=8):
         chart_reports.append({"id": chart_id, "series": series_reports})
     generated_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
     thermal_coal, thermal_report = extract_thermal(sheets, epoch, as_date, column_index_from_string)
+    coking_coal, coking_report = extract_coking(sheets, epoch, as_date, column_index_from_string)
     data = {
         "meta": {"title": "中国煤炭高频数据看板", "source": source.name,
                  "databaseDate": update_date.isoformat(),
                  **{name: value.isoformat() for name, value in weekly_dates.items()},
                  "generatedAt": generated_at, "timezone": "Asia/Shanghai", "sheetCount": sheet_count,
                  "sourceFileDate": version_date.isoformat() if version_date else None,
-                 "databaseDateSource": date_source, "schemaVersion": "2.1", "historyYears": years,
+                 "databaseDateSource": date_source, "schemaVersion": "2.2", "historyYears": years,
                  "supplyHistoryYears": supply_years,
                  "formulaPolicy": "使用Excel已保存的计算结果；不重新计算公式"},
         "summaryCards": [by_name[name] for name in SUMMARY_METRICS],
-        "weeklyMetrics": metrics, "charts": charts, "warnings": issues, "thermalCoal": thermal_coal,
+        "weeklyMetrics": metrics, "charts": charts, "warnings": issues,
+        "thermalCoal": thermal_coal, "cokingCoal": coking_coal,
     }
     report = {"source": str(source), "meta": data["meta"], "summaryCards": len(data["summaryCards"]),
               "weeklyMetrics": len(metrics), "availableWeeklyMetrics": sum(m["status"] == "ok" for m in metrics),
               "weeklySections": list(dict.fromkeys(m["section"] for m in metrics)),
-              "charts": chart_reports, "warnings": issues, "thermalCoal": thermal_report}
+              "charts": chart_reports, "warnings": issues, "thermalCoal": thermal_report, "cokingCoal": coking_report}
     return data, report
 
 
@@ -501,6 +505,7 @@ def main(argv=None):
         "summaryCards": report["summaryCards"], "weeklyMetrics": report["weeklyMetrics"],
         "availableWeeklyMetrics": report["availableWeeklyMetrics"],
         "thermalGroups": len(data["thermalCoal"]["groups"]), "thermalSeries": len(data["thermalCoal"]["series"]),
+        "cokingGroups": len(data["cokingCoal"]["groups"]), "cokingSeries": len(data["cokingCoal"]["series"]),
         "charts": {chart["id"]: {series["name"]: len(series["data"]) for series in chart["series"]} for chart in data["charts"]},
         "warnings": report["warnings"]}, ensure_ascii=False, indent=2))
     return 0

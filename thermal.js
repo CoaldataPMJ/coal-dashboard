@@ -2,13 +2,13 @@
   'use strict';
 
   const seasons = ['#246e9d', '#bb4b54', '#328478', '#7955a3', '#2c456a', '#b9651a', '#6e7b3e', '#7b5862'];
-  const palette = ['#226d70', '#d16439', '#387bb0', '#8762a5', '#7e8847', '#ad416d'];
+  const palette = ['#226d70', '#d16439', '#387bb0', '#8762a5', '#7e8847', '#ad416d', '#765747'];
   const dayMs = 86400000;
   const seasonStart = Date.UTC(2000, 0, 1);
   const frequencies = { daily: '日度', weekly: '周度', tenDay: '旬度', monthly: '月度', ytd: '月度累计' };
   const qualityLabels = {
     estimated: '原表分摊/推算', combined: '1–2 月合计', coverage: '分港覆盖未确认', missing: '源值缺失',
-    'excel-error': 'Excel 源值错误', placeholder: '源值为报价占位',
+    'excel-error': 'Excel 源值错误', placeholder: '源值为占位',
   };
   const compareLabels = {
     'no-base': '无对应基期', missing: '本期无有效值', 'year-reset': '年初重新累计',
@@ -55,23 +55,31 @@
     return date;
   }
 
-  window.initThermalDashboard = ({ data, renderPlot, node, timestamp, iso, number, renderOverview }) => {
-    const groups = data?.groups ?? [];
+  window.initThermalDashboard = ({ data: thermalData, cokingData, loadFailures = {}, renderPlot, node, timestamp, iso, number, renderOverview }) => {
     const view = at('thermal-view');
     const plot = at('thermal-plot');
     const chartCard = at('thermal-card');
     const seriesCache = new Map();
     const panelState = new Map();
     const panelByGroup = new Map();
-    const mode = { seasonal: false, monthStart: 1, monthEnd: 12 };
-    let currentGroup, currentPanel, resizeTimer;
+    const topics = {
+      thermal: { label: '动力煤', dataset: thermalData, loadFailure: loadFailures.thermalCoal,
+        mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
+      coking: { label: '炼焦煤', dataset: cokingData, loadFailure: loadFailures.cokingCoal,
+        mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
+    };
+    let topic, data, mode, currentGroup, currentPanel, resizeTimer;
+
+    const groupKey = () => `${topic}/${currentGroup.id}`;
+    const panelKey = () => `${groupKey()}/${currentPanel.id}`;
 
     function current() {
-      return panelState.get(`${currentGroup.id}/${currentPanel.id}`);
+      return panelState.get(panelKey());
     }
 
     function getSeries(id) {
-      if (!seriesCache.has(id)) {
+      const cacheKey = `${topic}/${id}`;
+      if (!seriesCache.has(cacheKey)) {
         const series = data.series[id];
         let previous;
         const decode = ([value, base, status, estimated, absolute]) => [value, data.dates[base], status, estimated, absolute];
@@ -83,9 +91,9 @@
           return point;
         });
         const years = [...new Set(points.filter(point => numeric(point.value)).map(point => Number(point.date.slice(0, 4))))];
-        seriesCache.set(id, { ...series, points, years });
+        seriesCache.set(cacheKey, { ...series, points, years });
       }
-      return seriesCache.get(id);
+      return seriesCache.get(cacheKey);
     }
 
     function setPreset(preset) {
@@ -109,10 +117,10 @@
       state.end = latest;
     }
 
-    function groupButtons() {
+    function groupButtons(groups) {
       for (const group of groups) {
         const link = node('a', '', group.name);
-        link.href = `#thermal/${group.id}`;
+        link.href = `#${topic}/${group.id}`;
         if (group === currentGroup) link.setAttribute('aria-current', 'true');
         at('thermal-groups').append(link);
       }
@@ -120,8 +128,8 @@
 
     function selectPanel(panel) {
       currentPanel = panel;
-      panelByGroup.set(currentGroup.id, panel.id);
-      const key = `${currentGroup.id}/${panel.id}`;
+      panelByGroup.set(groupKey(), panel.id);
+      const key = panelKey();
       if (!panelState.has(key)) {
         const available = panel.seriesIds.find(id => data.series[id].latestValidDate) ?? panel.seriesIds[0];
         panelState.set(key, { hidden: new Set(), selected: available, years: new Map(), start: '', end: '' });
@@ -141,27 +149,43 @@
     }
 
     function updateRoute() {
-      const route = /^#thermal(?:\/([a-z0-9-]+))?$/.exec(window.location.hash);
-      const showThermal = Boolean(route);
-      view.hidden = !showThermal;
-      at('overview-view').hidden = showThermal;
-      at('overview-nav').hidden = showThermal;
-      const activeLink = at(showThermal ? 'view-thermal' : 'view-overview');
-      const inactiveLink = at(showThermal ? 'view-overview' : 'view-thermal');
-      activeLink.setAttribute('aria-current', 'page');
-      inactiveLink.removeAttribute('aria-current');
-      if (!showThermal) {
+      const route = /^#(thermal|coking)(?:\/([a-z0-9-]+))?$/.exec(window.location.hash);
+      const showDetails = Boolean(route);
+      view.hidden = !showDetails;
+      at('overview-view').hidden = showDetails;
+      at('overview-nav').hidden = showDetails;
+      const active = route?.[1] ?? 'overview';
+      for (const section of ['overview', 'thermal', 'coking']) {
+        const link = at(`view-${section}`);
+        if (section === active) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      }
+      if (!showDetails) {
         renderOverview();
         return;
       }
+      topic = route[1];
+      const entry = topics[topic];
+      data = entry.dataset;
+      mode = entry.mode;
+      const groups = data?.groups ?? [];
+      const groupNav = at('thermal-groups');
+      at('thermal-title').textContent = entry.label;
+      groupNav.setAttribute('aria-label', `${entry.label}图表分组`);
+      groupNav.replaceChildren();
       at('thermal-unavailable').hidden = Boolean(groups.length);
       chartCard.hidden = !groups.length;
-      if (!groups.length) return;
-      currentGroup = groups.find(group => group.id === route[1]) ?? groups[0];
-      at('thermal-groups').replaceChildren();
-      groupButtons();
+      if (!groups.length) {
+        currentGroup = currentPanel = null;
+        at('thermal-unavailable').textContent = entry.loadFailure
+          ? `${entry.label}明细加载失败，请刷新后重试。`
+          : `当前数据文件未包含${entry.label}明细。运行更新脚本生成新版 data.js 后即可查看。`;
+        return;
+      }
+      currentGroup = groups.find(group => group.id === route[2]) ?? groups[0];
+      groupButtons(groups);
       options(at('thermal-panel'), currentGroup.panels.map(panel => [panel.id, panel.name]));
-      selectPanel(currentGroup.panels.find(panel => panel.id === panelByGroup.get(currentGroup.id)) ?? currentGroup.panels[0]);
+      selectPanel(currentGroup.panels.find(panel => panel.id === panelByGroup.get(groupKey())) ?? currentGroup.panels[0]);
     }
 
     function seasonalYears(series, state) {

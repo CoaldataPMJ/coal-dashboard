@@ -21,14 +21,7 @@
   };
 
   try {
-    if (window.COAL_DATA_READY) {
-      try {
-        await window.COAL_DATA_READY;
-      } catch (error) {
-        $('#thermal-unavailable').textContent = '动力煤明细加载失败，请刷新页面重试。总览仍可查看。';
-        console.warn(error);
-      }
-    }
+    if (window.COAL_DATA_READY) await window.COAL_DATA_READY;
     const data = window.COAL_DATA;
     if (!data || !data.meta || !Array.isArray(data.charts) || !Array.isArray(data.weeklyMetrics)) {
       throw new Error('未能加载看板数据。请确认 data.js 与 index.html 位于同一文件夹，再刷新页面。');
@@ -369,7 +362,9 @@
     }));
     selectRange('1');
     renderTable();
-    window.initThermalDashboard?.({ data: data.thermalCoal, renderPlot, node, timestamp, iso, number, renderOverview: renderCharts });
+    window.initThermalDashboard?.({ data: data.thermalCoal, cokingData: data.cokingCoal,
+      loadFailures: window.COAL_DATA_LOAD_FAILURES,
+      renderPlot, node, timestamp, iso, number, renderOverview: renderCharts });
   } catch (error) {
     const box = $('#load-error');
     box.hidden = false;

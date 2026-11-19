@@ -36,6 +36,7 @@
     <nav class="view-switch" aria-label="看板板块">
       <a id="view-overview" href="#top" aria-current="page">总览</a>
       <a id="view-thermal" href="#thermal">动力煤</a>
+      <a id="view-coking" href="#coking">炼焦煤</a>
     </nav>
     <div id="overview-view">
     <section aria-labelledby="snapshot-title">
@@ -67,8 +68,8 @@
     </div>
     <section id="thermal-view" aria-labelledby="thermal-title" hidden>
       <div class="section-heading"><h2 id="thermal-title">动力煤</h2></div>
-      <nav id="thermal-groups" class="thermal-groups" aria-label="动力煤图表分组"></nav>
-      <p id="thermal-unavailable" class="error-box" hidden>当前数据文件只包含总览。运行更新脚本生成新版 data.js 后，即可查看动力煤图表。</p>
+      <nav id="thermal-groups" class="thermal-groups" aria-label="煤种图表分组"></nav>
+      <p id="thermal-unavailable" class="error-box" hidden></p>
       <article id="thermal-card" class="chart-card thermal-card" hidden>
         <div class="thermal-toolbar">
           <label for="thermal-panel">图项 <select id="thermal-panel"></select></label>
@@ -79,13 +80,13 @@
           <label id="thermal-series-field" for="thermal-series" hidden>指标 <select id="thermal-series"></select></label>
         </div>
         <form id="thermal-date-filter" class="filter-bar thermal-filters">
-          <div id="thermal-presets" class="range-buttons" role="group" aria-label="动力煤快捷日期范围">
+          <div id="thermal-presets" class="range-buttons" role="group" aria-label="快捷日期范围">
             <button type="button" data-range="1">近一年</button><button type="button" data-range="3">近三年</button><button type="button" data-range="6">近六年</button><button type="button" data-range="all">全部</button>
           </div>
           <div class="date-fields">
-            <label for="thermal-start"><span class="sr-only">动力煤开始日期</span><input id="thermal-start" type="date" required></label>
+            <label for="thermal-start"><span class="sr-only">走势图开始日期</span><input id="thermal-start" type="date" required></label>
             <span aria-hidden="true">—</span>
-            <label for="thermal-end"><span class="sr-only">动力煤结束日期</span><input id="thermal-end" type="date" required></label>
+            <label for="thermal-end"><span class="sr-only">走势图结束日期</span><input id="thermal-end" type="date" required></label>
             <button class="apply-button" type="submit">应用</button>
           </div>
           <p id="thermal-date-error" class="date-error" role="alert" hidden></p>

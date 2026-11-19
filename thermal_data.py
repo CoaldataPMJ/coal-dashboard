@@ -227,7 +227,7 @@ def power_panels():
             series.append(metric(f"power-{panel_id}-{key}", name, unit, frequency, POWER, "A", col, 6,
                                  ((f"{col}4", header), (f"{col}5", unit)), demand_ids=(first_id + index,),
                                  reported=(mom[index] if mom else "", yoy[index] if yoy else ""),
-                                 rule="power"))
+                                 rule="monthly_split"))
         yield panel(panel_id, title, series, "其他为总发电减火电和水电。")
     yield panel("gd-electricity", "广东日前现货平均电价", (
         metric(key, name, "元/兆瓦时", "daily", PRICE, "EG", col, 7,
@@ -323,8 +323,8 @@ THERMAL_GROUPS = (
 )
 
 
-def thermal_specs():
-    for _, _, panels in THERMAL_GROUPS:
+def detail_specs(groups):
+    for _, _, panels in groups:
         for _, _, metrics, _ in panels:
             yield from metrics
 
@@ -415,7 +415,7 @@ def transport_check(get, day):
     return uncertain
 
 
-def power_periods(sheet, parse_date, epoch):
+def monthly_periods(sheet, parse_date, epoch, cumulative_index, extra_split_days):
     by_period = {}
     for row in sheet.rows[5:]:
         day = parse_date(row[0], epoch)
@@ -423,28 +423,30 @@ def power_periods(sheet, parse_date, epoch):
             by_period[(day.year, day.month)] = row
     estimates, combined = set(), set()
     for (year, month), feb in by_period.items():
-        if month != 2 or not finite(feb[13]) or feb[13] <= 0:
+        total = feb[cumulative_index]
+        if month != 2 or not finite(total) or total <= 0:
             continue
         jan = by_period.get((year, 1))
         if jan is None or not finite(jan[1]) or jan[1] == 0:
-            if not finite(feb[1]) or feb[1] == 0 or math.isclose(feb[1], feb[13], abs_tol=0.00001):
+            if not finite(feb[1]) or feb[1] == 0 or math.isclose(feb[1], total, abs_tol=0.00001):
                 combined.add(year)
             continue
         month_days = calendar.monthrange(year, 2)[1]
         if finite(feb[1]):
-            expected = feb[13] * 31 / (31 + month_days)
-            if math.isclose(jan[1], expected, abs_tol=0.00001) and math.isclose(jan[1] + feb[1], feb[13], abs_tol=0.00001):
+            split_days = (31 + month_days, *extra_split_days)
+            match = any(math.isclose(jan[1], total * 31 / days, abs_tol=0.00001) for days in split_days)
+            if match and math.isclose(jan[1] + feb[1], total, abs_tol=0.00001):
                 estimates.update(((year, 1), (year, 2)))
     return estimates, combined
 
 
-def read_metric(spec, sheet, parse_date, epoch, col_index, power_calendar):
+def read_metric(spec, sheet, parse_date, epoch, col_index, monthly_calendar, combined_columns):
     date_index = col_index(spec.date_column) - 1
     indices = {col: col_index(col) - 1 for col in (*spec.value_columns, *"BCDEFGHIJKLM")
                if col}
     values = {}
     duplicate_count = conflict_count = 0
-    estimated_periods, combined_years = power_calendar
+    estimated_periods, combined_years = monthly_calendar
     for row in sheet.rows[spec.start_row - 1:]:
         raw_date = row[date_index]
         if spec.end_marker and isinstance(raw_date, str) and raw_date.strip().casefold().startswith(spec.end_marker.casefold()):
@@ -458,16 +460,16 @@ def read_metric(spec, sheet, parse_date, epoch, col_index, power_calendar):
         rates = tuple(get(col) for col in spec.reported)
         if spec.sheet == TRANSPORT and set(spec.columns) & transport_check(get, day):
             value, quality = None, "coverage"
-        if spec.rule == "power" and value is not None and (day.year, day.month) in estimated_periods:
+        if spec.rule == "monthly_split" and value is not None and (day.year, day.month) in estimated_periods:
             if spec.frequency != "ytd" or day.month == 1:
                 quality = "estimated"
-        if spec.rule == "power" and spec.frequency == "monthly" and day.year in combined_years:
+        if spec.rule == "monthly_split" and spec.frequency == "monthly" and day.year in combined_years:
             column = spec.columns[0]
             if day.month == 1:
                 value, quality = None, "missing"
             elif day.month == 2:
-                combined_column = COMBINED_POWER_COLUMNS[column]
-                value, quality = row_value(spec, [row[col_index(combined_column) - 1]])
+                combined_column = combined_columns.get(column)
+                value, quality = row_value(spec, [row[col_index(combined_column) - 1] if combined_column else None])
                 rates = (None, None)
                 if value is not None:
                     quality = "combined"
@@ -519,14 +521,22 @@ def read_metric(spec, sheet, parse_date, epoch, col_index, power_calendar):
 
 
 def extract_thermal(sheets, epoch, parse_date, col_index):
+    return extract_detail(THERMAL_GROUPS, "动力煤", sheets, epoch, parse_date, col_index,
+                          POWER, "N", COMBINED_POWER_COLUMNS)
+
+
+def extract_detail(config, label, sheets, epoch, parse_date, col_index, monthly_sheet, cumulative_col,
+                   combined_columns, extra_split_days=()):
     series, groups, reports = {}, [], []
     dates, date_indices = [], {}
-    power_calendar = power_periods(sheets[POWER], parse_date, epoch)
-    for group_id, label, panels in THERMAL_GROUPS:
+    monthly_calendar = monthly_periods(sheets[monthly_sheet], parse_date, epoch,
+                                       col_index(cumulative_col) - 1, extra_split_days)
+    for group_id, group_name, panels in config:
         visible_panels = []
         for panel_id, title, metrics, note in panels:
             for spec in metrics:
-                item, report = read_metric(spec, sheets[spec.sheet], parse_date, epoch, col_index, power_calendar)
+                item, report = read_metric(spec, sheets[spec.sheet], parse_date, epoch, col_index,
+                                           monthly_calendar, combined_columns)
                 for point in item["points"]:
                     for record, field in ((point, 0), (point[2], 1), (point[3], 1)):
                         stamp = record[field]
@@ -540,8 +550,8 @@ def extract_thermal(sheets, epoch, parse_date, col_index):
             visible_panels.append({"id": panel_id, "name": title, "note": note,
                                    "seriesIds": [spec.id for spec in metrics]})
         if not any(series[spec.id]["latestValidDate"] for _, _, metrics, _ in panels for spec in metrics):
-            raise ValueError(f"动力煤「{label}」没有有效数据，请核对来源及公式缓存。")
-        groups.append({"id": group_id, "name": label, "panels": visible_panels})
+            raise ValueError(f"{label}「{group_name}」没有有效数据，请核对来源及公式缓存。")
+        groups.append({"id": group_id, "name": group_name, "panels": visible_panels})
     return {
         "groups": groups, "series": series, "dates": dates,
         "pointFields": ["dateIndex", "value", "mom", "yoy", "quality"],
