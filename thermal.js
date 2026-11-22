@@ -270,8 +270,6 @@
       updateControls(selected);
       legend();
       at('thermal-chart-name').textContent = `${currentGroup.name} · ${currentPanel.name}`;
-      at('thermal-chart-note').textContent = currentPanel.note;
-      at('thermal-chart-note').hidden = !currentPanel.note;
       at('thermal-unit').textContent = `${frequencies[selected.frequency]} · ${selected.unit}`;
       draw();
     }
@@ -346,11 +344,6 @@
       const state = current();
       const selected = getSeries(state.selected);
       const used = mode.seasonal ? [selected] : currentPanel.seriesIds.filter(id => !state.hidden.has(id)).map(getSeries);
-      at('thermal-sources').replaceChildren(...used.map(series => {
-        const columns = series.source.valueColumns.join('、');
-        const latest = series.latestValidDate ? periodLabel(series.latestValidDate, series.frequency) : '无有效数据';
-        return node('li', '', `${series.name} · 最新统计期 ${latest} · ${series.source.sheet} / ${series.source.dateColumn} → ${columns}`);
-      }));
       if (!used.length || (!mode.seasonal && !state.start) || (mode.seasonal && !seasonalYears(selected, state).size)) {
         plot.replaceChildren(node('div', 'plot-empty', mode.seasonal ? '请选择有数据的年份' : '请选择有有效数据的序列'));
         return;
@@ -440,3 +433,4 @@
     updateRoute();
   };
 })();
+

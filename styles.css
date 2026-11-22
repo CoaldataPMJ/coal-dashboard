@@ -31,8 +31,6 @@
 .thermal-years, .thermal-months { display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: center; }
 .thermal-year { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
 .thermal-year input { accent-color: var(--teal); }
-.thermal-sources { border-top: 1px solid var(--line); margin: 8px 0 0; padding: 9px 0 0; list-style: none; color: #627681; font-size: 10px; overflow-wrap: anywhere; }
-.thermal-sources li + li { margin-top: 3px; }
 .thermal-card:last-child .thermal-plot { height: clamp(300px, 47vw, 510px); }
 .thermal-tooltip { width: min(355px, 100%); padding: 8px 10px; }
 .thermal-tooltip time { margin: 0; }

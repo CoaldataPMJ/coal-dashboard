@@ -253,7 +253,7 @@
       const card = node('article', 'chart-card');
       card.id = `chart-${chart.id}`;
       const head = node('div', 'chart-header'), text = node('div');
-      text.append(node('h3', '', chart.title), node('p', 'chart-subtitle', chart.subtitle));
+      text.append(node('h3', '', chart.title));
       head.append(text, node('span', 'chart-unit', chart.unit));
       const legend = node('div', 'chart-legend');
       const plot = node('div', 'plot');
@@ -277,7 +277,7 @@
       const endDates = chart.series.map(series => series.dateRange?.last).filter(Boolean).sort();
       const coverage = chart.seasonal ? endDates[endDates.length - 1]
         : endDates[0] === endDates[endDates.length - 1] ? endDates[0] : `${endDates[0]} 至 ${endDates[endDates.length - 1]}`;
-      foot.append(node('span', '', `${chart.source || '源数据'} · 最新有效期 ${chart.frequency === '月度均值' ? coverage?.slice(0, 7) : coverage}`),
+      foot.append(node('span', '', `最新统计期 ${chart.frequency === '月度均值' ? coverage?.slice(0, 7) : coverage}`),
         node('span', '', `${chart.frequency || ''} · ${chart.seasonal ? '点击年份筛选' : '悬停查看'}`));
       card.append(head, legend, plot, foot);
       $('#charts').append(card);
@@ -402,3 +402,4 @@
     console.error(error);
   }
 })();
+
