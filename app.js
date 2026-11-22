@@ -26,9 +26,11 @@
     if (!data || !data.meta || !Array.isArray(data.charts) || !Array.isArray(data.weeklyMetrics)) {
       throw new Error('未能加载看板数据。请确认 data.js 与 index.html 位于同一文件夹，再刷新页面。');
     }
-    const state = { section: '全部', search: '', start: '', end: data.meta.databaseDate };
-    const latest = timestamp(data.meta.databaseDate);
-    const earliest = Math.min(...data.charts.flatMap(chart => chart.series.flatMap(series =>
+    const overviewEnd = data.meta.weeklyDate || data.meta.databaseDate;
+    const state = { section: '全部', search: '', start: '', end: overviewEnd };
+    const latest = timestamp(overviewEnd);
+    const datedCharts = data.charts.filter(chart => !chart.seasonal);
+    const earliest = Math.min(...(datedCharts.length ? datedCharts : data.charts).flatMap(chart => chart.series.flatMap(series =>
       series.data.length ? [timestamp(series.data[0].date)] : [])));
     const hiddenSeries = new Map();
     const charts = new Map();
@@ -83,7 +85,7 @@
       const candidate = years === 'all' ? earliest
         : Date.UTC(date.getUTCFullYear() - Number(years), date.getUTCMonth(), date.getUTCDate());
       state.start = iso(Math.max(candidate, earliest));
-      state.end = data.meta.databaseDate;
+      state.end = overviewEnd;
       $('#start-date').value = state.start;
       $('#end-date').value = state.end;
       $('#date-error').hidden = true;
@@ -217,6 +219,32 @@
       plot.append(svg, tooltip);
     }
 
+    function renderOverviewChart(chart, plot) {
+      if (!chart.seasonal) {
+        renderPlot(chart, plot);
+        return;
+      }
+      const enabled = chart.series.filter(series => !hiddenSeries.get(chart.id).has(series.name));
+      const start = Date.UTC(2000, 0, 1), end = Date.UTC(2000, 11, 31);
+      renderPlot(chart, plot, {
+        series: enabled, bounds: [start, end], rangeLabel: '1月至12月，年度对比',
+        ticks: width => Array.from({ length: 12 }, (_, index) => index)
+          .filter(index => width >= 450 || index % 2 === 0)
+          .map(index => [Date.UTC(2000, index, 1), `${index + 1}月`]),
+        fillTooltip(tooltip, visible, byDate, day) {
+          const monthly = chart.frequency === '月度均值';
+          tooltip.replaceChildren(node('time', '', monthly ? `${new Date(day).getUTCMonth() + 1}月` : iso(day).slice(5)));
+          visible.forEach((series, index) => {
+            const point = byDate[index].get(day);
+            const row = node('div', 'tooltip-row');
+            const period = point?.sourceDate ? (monthly ? point.sourceDate.slice(0, 7) : point.sourceDate) : series.name;
+            row.append(node('span', '', period), node('strong', '', `${number(point?.value)} ${chart.unit}`));
+            tooltip.append(row);
+          });
+        },
+      });
+    }
+
     data.charts.forEach(sourceChart => {
       const chart = { ...sourceChart, series: sourceChart.series.map(series => ({ ...series,
         color: /^#[0-9a-f]{6}$/i.test(series.color) ? series.color : '#226d70',
@@ -241,14 +269,16 @@
           const hidden = hiddenSeries.get(chart.id);
           if (hidden.has(series.name)) hidden.delete(series.name); else hidden.add(series.name);
           button.setAttribute('aria-pressed', String(!hidden.has(series.name)));
-          renderPlot(chart, plot);
+          renderOverviewChart(chart, plot);
         });
         legend.append(button);
       });
       const foot = node('div', 'chart-foot');
       const endDates = chart.series.map(series => series.dateRange?.last).filter(Boolean).sort();
-      const coverage = endDates[0] === endDates[endDates.length - 1] ? endDates[0] : `${endDates[0]} 至 ${endDates[endDates.length - 1]}`;
-      foot.append(node('span', '', `源数据最新日期：${coverage}`), node('span', '', `${chart.frequency || ''}数据 · 悬停查看`));
+      const coverage = chart.seasonal ? endDates[endDates.length - 1]
+        : endDates[0] === endDates[endDates.length - 1] ? endDates[0] : `${endDates[0]} 至 ${endDates[endDates.length - 1]}`;
+      foot.append(node('span', '', `${chart.source || '源数据'} · 最新有效期 ${chart.frequency === '月度均值' ? coverage?.slice(0, 7) : coverage}`),
+        node('span', '', `${chart.frequency || ''} · ${chart.seasonal ? '点击年份筛选' : '悬停查看'}`));
       card.append(head, legend, plot, foot);
       $('#charts').append(card);
       charts.set(chart.id, { chart, plot });
@@ -256,7 +286,7 @@
 
     function renderCharts() {
       if ($('#overview-view')?.hidden) return;
-      charts.forEach(({ chart, plot }) => renderPlot(chart, plot));
+      charts.forEach(({ chart, plot }) => renderOverviewChart(chart, plot));
     }
     let resizeTimer;
     const observer = new ResizeObserver(() => {

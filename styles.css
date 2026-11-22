@@ -9,6 +9,7 @@
 @media print{.sidebar,.filter-bar,.table-tools,.text-button,.quality-notes{display:none}main{margin:0;padding:0}.chart-card,.summary-card{break-inside:avoid}.table-scroll{max-height:none;overflow:visible}.page-head{margin-bottom:15px}body{background:white}.plot{height:210px}}
 
 [hidden] { display: none !important; }
+.chart-grid .chart-card:last-child { grid-column: auto; }
 .view-switch { display: inline-flex; gap: 3px; padding: 4px; margin: 0 0 22px; border: 1px solid var(--line); border-radius: 8px; background: #eaf0f1; }
 .view-switch a, .view-switch button { padding: 6px 18px; border: 0; border-radius: 5px; background: transparent; color: #526672; font: inherit; }
 .view-switch [aria-current], .view-switch [aria-pressed="true"] { background: #fff; color: var(--teal); font-weight: 650; box-shadow: 0 1px 4px #152f3b14; }

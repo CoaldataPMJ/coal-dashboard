@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""按 China Coal Database-20261113.xlsx 的布局导出煤炭看板数据。
+"""从煤炭数据库的周报图表和煤种底表导出看板数据。
 
 Python 3.9+，依赖 openpyxl。只读 Excel，不计算公式、不修改工作簿。
-输出继续使用 window.COAL_DATA，兼容原脚本的五组图表和主要字段。
+输出使用 window.COAL_DATA，总览图表按“周报输出”的图项和单元格引用更新。
 用法：python3 extract_dashboard_data.py --source "数据库.xlsx"
 """
 
 from __future__ import annotations
 
 import argparse
-import calendar
 import json
 import math
 import re
@@ -28,123 +27,14 @@ from openpyxl.utils.datetime import CALENDAR_WINDOWS_1900, from_excel
 from openpyxl.utils.exceptions import InvalidFileException
 from coking_data import COKING_GROUPS, extract_coking
 from thermal_data import THERMAL_GROUPS, detail_specs, extract_thermal
+from weekly_charts import chart_requirements, extract_weekly_charts, read_chart_definitions
 
 
 ROOT = Path(__file__).resolve().parent
-PRICE_SHEET = "Raw data-价格_指数"
-INVENTORY_SHEET = "Raw data-港口库存"
-TRANSPORT_SHEET = "Raw data-北方三港"
-POWER_SHEET = "Raw data-旬度发电量"
-MONTHLY_SHEET = "Raw data-月度数据"
-
-# 周报按 B 列的文字分区，插入指标行时不必修改行号。
 WEEKLY_SECTIONS = {"价格", "产量", "库存", "电力", "钢铁和化工"}
 WEEKLY_STOP_TITLES = {"周涨跌幅", "港口5500动力煤价格"}
 POINT_CHANGE_METRICS = {"欧洲天然气储气率", "247家钢铁高炉开工率"}
 SUMMARY_METRICS = ("CCI5500", "CCTD主流港口库存", "沿海八省日耗", "内陆十七省库存")
-
-
-@dataclass(frozen=True)
-class SourceSpec:
-    """一段时序数据的布局。列字母、起始行、表头校验都集中在这里。"""
-
-    sheet: str
-    date_column: str
-    value_columns: tuple[str, ...]
-    start_row: int
-    headers: tuple[tuple[str, str], ...]
-    scale: float = 1.0
-    positive_only: bool = False
-    label: str = ""
-
-
-def price_source(date_column, value_column, start_row, header, label, current=False):
-    checks = [(f"{value_column}{2 if current else 3}", header)]
-    if current:
-        # 新区块同一指标有人民币、美元和指数环比多列，必须同时核对值项与单位。
-        checks += [(f"{value_column}6", "人民币"), (f"{value_column}7", "元/吨")]
-        checks += [(f"{date_column}2", "指标名称")]
-    return SourceSpec(PRICE_SHEET, date_column, (value_column,), start_row,
-                      tuple(checks), positive_only=True, label=label)
-
-
-# 多段价格按先旧后新的顺序配置。新区块覆盖区间内的缺值保持缺失，
-# 旧区块仅补充新区块开始之前的历史，不拿旧报价填充新区块中的缺口。
-PRICE_SOURCES = {
-    "CCI5500": (
-        price_source("A", "B", 6, "动力煤价格指数(RMB):CCI5500(含税)", "Wind历史"),
-        price_source("CW", "CX", 8, "CCI5500", "FW2707R当前数据", True),
-    ),
-    "鄂尔多斯 5500": (
-        price_source("AF", "AG", 4, "内蒙古鄂尔多斯5500", "汾渭旧数据"),
-        price_source("CW", "DV", 8, "内蒙古鄂尔多斯5500", "FW2707R当前数据", True),
-    ),
-    "大同 5500": (
-        price_source("AK", "AM", 4, "山西大同5500", "汾渭旧数据"),
-        price_source("CW", "DX", 8, "山西大同5500", "FW2707R当前数据", True),
-    ),
-}
-
-
-def inventory_source(columns, names):
-    return SourceSpec(
-        INVENTORY_SHEET, "A", columns, 5,
-        tuple((f"{column}2", name) for column, name in zip(columns, names))
-        + tuple((f"{column}4", "万吨") for column in columns),
-        label="FW1203D北方港口库存",
-    )
-
-
-INVENTORY_SOURCES = {
-    "港口合计": (inventory_source(("B",), ("合计",)),),
-    "秦皇岛港": (inventory_source(("C",), ("秦皇岛港",)),),
-    # 原脚本只加 G:J，遗漏 K 列华电曹妃甸港。本版将五个码头全部纳入。
-    "曹妃甸港群": (inventory_source(
-        ("G", "H", "I", "J", "K"),
-        ("国投曹妃甸港", "国储曹妃甸港", "曹妃甸港二期", "华能曹妃甸港", "华电曹妃甸港"),
-    ),),
-}
-
-
-def transport_source(columns, suffix):
-    ports = ("秦皇岛港", "曹妃甸港", "黄骅港")
-    return SourceSpec(
-        TRANSPORT_SHEET, "A", columns, 5,
-        tuple((f"{column}3", f"煤炭调度:{port}:{suffix}") for column, port in zip(columns, ports))
-        + tuple((f"{column}4", "万吨") for column in columns),
-        label="北方三港逐港加总",
-    )
-
-
-TRANSPORT_SOURCES = {
-    "铁路调入量": (transport_source(("B", "E", "H"), "铁路调入量"),),
-    "港口吞吐量": (transport_source(("C", "F", "I"), "港口吞吐量"),),
-}
-POWER_SOURCES = {
-    name: (SourceSpec(POWER_SHEET, "M", (column,), 8,
-                      ((f"{column}7", name), ("M7", "date"), ("A7", "单位：亿千瓦时")),
-                      positive_only=True, label="CCTD旬度日均发电量"),)
-    for name, column in (("总发电量", "C"), ("火电", "E"), ("水电", "G"))
-}
-SUPPLY_SOURCES = {
-    "原煤产量": (SourceSpec(MONTHLY_SHEET, "BG", ("BH",), 7,
-        (("BH3", "产量:原煤:当月值"), ("BH5", "百万吨")),
-        positive_only=True, label="国家统计局月度原煤产量"),),
-    "煤及褐煤进口": (SourceSpec(MONTHLY_SHEET, "BR", ("BS",), 6,
-        (("BS3", "进口数量:煤及褐煤:当月值"), ("BS5", "千吨")),
-        scale=0.001, positive_only=True, label="月度进口：千吨转百万吨"),),
-}
-
-# 五个图表 ID 沿用旧版，附加的 source/dateRange 等字段可由页面按需使用。
-CHARTS = (
-    ("price", "动力煤价格走势", "港口与坑口含税价格", "元/吨", "日度", 14, PRICE_SOURCES),
-    ("inventory", "北方港口煤炭库存", "FW1203D口径，曹妃甸港群含五个码头", "万吨", "日度", 14, INVENTORY_SOURCES),
-    ("transport", "北方三港调入与吞吐", "秦皇岛、曹妃甸、黄骅港合计", "万吨", "日度", 14, TRANSPORT_SOURCES),
-    ("power", "旬度日均发电量", "总发电、火电与水电；日期沿用原表旬度标记", "亿千瓦时", "旬度", 45, POWER_SOURCES),
-    ("supply", "煤炭供给", "全国原煤产量与煤及褐煤进口", "百万吨", "月度", 75, SUPPLY_SOURCES),
-)
-COLORS = ("#ef7d32", "#2a7f9e", "#5a9f68")
-
 
 def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
@@ -220,15 +110,12 @@ def discover_source(source=None, search_dirs=None):
 
 
 def source_specs():
-    for *_, mapping in CHARTS:
-        for specs in mapping.values():
-            yield from specs
     yield from detail_specs(THERMAL_GROUPS)
     yield from detail_specs(COKING_GROUPS)
 
 
-def load_sources(source):
-    required = {"Table of Contents": 2, "周报输出": 10}
+def load_sources(source, chart_definitions):
+    required = {"Table of Contents": 2, "周报输出": 10, **chart_requirements(chart_definitions)}
     for spec in source_specs():
         columns = [spec.date_column, *spec.value_columns]
         columns += [coordinate_from_string(address)[0] for address, _ in spec.headers]
@@ -317,105 +204,11 @@ def read_weekly(sheet, epoch, issues):
     return metrics, dates
 
 
-def read_points(sheet, spec, end_date, epoch):
-    """同日重复记录按工作表最后一行取值，并在报告中列出重复次数。"""
-    di = column_index_from_string(spec.date_column) - 1
-    indices = [column_index_from_string(column) - 1 for column in spec.value_columns]
-    by_date = {}
-    stats = {"sheet": spec.sheet, "dateColumn": spec.date_column,
-             "valueColumns": list(spec.value_columns), "startRow": spec.start_row,
-             "scale": spec.scale, "label": spec.label,
-             "duplicateDates": 0, "missingRows": 0, "rowsAfterCutoff": 0}
-    for row_number, row in enumerate(sheet.rows[spec.start_row - 1:], spec.start_row):
-        day = as_date(row[di], epoch)
-        if day is None:
-            continue
-        if day > end_date:
-            stats["rowsAfterCutoff"] += 1
-            continue
-        values = [row[index] for index in indices]
-        valid = all(is_number(value) for value in values)
-        value = sum(values) * spec.scale if valid else None
-        # 库存与运输允许真实零值。价格等使用零作为缺失占位时不生成零报价。
-        if value is not None and spec.positive_only and value <= 0:
-            value = None
-        if value is None:
-            stats["missingRows"] += 1
-        key = day.isoformat()
-        if key in by_date:
-            stats["duplicateDates"] += 1
-        by_date[key] = {"date": key, "value": clean_number(value), "_row": row_number}
-    valid_dates = sorted(key for key, point in by_date.items() if point["value"] is not None)
-    stats["validPoints"] = len(valid_dates)
-    stats["firstDate"] = valid_dates[0] if valid_dates else None
-    stats["lastDate"] = valid_dates[-1] if valid_dates else None
-    # 不把源数据开始前或结束后的整段空白画成历史数据。
-    if not valid_dates:
-        return [], stats
-    last_row = by_date[valid_dates[-1]]["_row"]
-    stats["latestSourceRow"] = last_row
-    stats["latestInputs"] = {
-        column: sheet.rows[last_row - 1][index]
-        for column, index in zip(spec.value_columns, indices)
-    }
-    points = [by_date[key] for key in sorted(by_date) if valid_dates[0] <= key <= valid_dates[-1]]
-    return points, stats
-
-
-def years_before(day, years):
-    year = day.year - years
-    return day.replace(year=year, day=min(day.day, calendar.monthrange(year, day.month)[1]))
-
-
-def build_series(name, specs, sheets, epoch, end_date, years, lag_days, color, issues):
-    merged, reports = {}, []
-    for spec in specs:
-        points, report = read_points(sheets[spec.sheet], spec, end_date, epoch)
-        reports.append(report)
-        if not points:
-            raise ValueError(f"{name} 的 {spec.label} 没有有效数据。请检查公式缓存和源列 {spec.value_columns}。")
-        start = points[0]["date"]
-        merged = {key: point for key, point in merged.items() if key < start}
-        merged.update({point["date"]: {**point, "_source": len(reports) - 1} for point in points})
-    cutoff = years_before(end_date, years).isoformat()
-    selected = [merged[key] for key in sorted(merged) if key >= cutoff]
-    valid = [point for point in selected if point["value"] is not None]
-    if not valid:
-        raise ValueError(f"{name} 在最近 {years} 年内没有有效数据。")
-    segments = []
-    for index, report in enumerate(reports):
-        used = [p for p in selected if p["_source"] == index and p["value"] is not None]
-        if used:
-            segments.append({"label": report["label"], "sheet": report["sheet"],
-                             "dateColumn": report["dateColumn"], "valueColumns": report["valueColumns"],
-                             "scale": report["scale"], "firstDate": used[0]["date"],
-                             "lastDate": used[-1]["date"], "pointCount": len(used)})
-    last_date = date.fromisoformat(valid[-1]["date"])
-    if (end_date - last_date).days > lag_days:
-        issues.append({"code": "stale_series", "series": name,
-                       "message": f"{name} 的源数据最后有效日期为 {last_date}，距数据库日期超过 {lag_days} 天；未外推或补齐。"})
-    for report in reports:
-        if report["duplicateDates"]:
-            issues.append({"code": "duplicate_dates", "series": name,
-                           "message": f"{report['label']} 有 {report['duplicateDates']} 条同日重复记录，取工作表最后一行。"})
-        inputs = report.get("latestInputs", {})
-        zeros = [column for column, value in inputs.items() if value == 0]
-        if len(inputs) > 1 and zeros and any(value != 0 for value in inputs.values()):
-            issues.append({"code": "aggregate_zero_components", "series": name,
-                           "date": report["lastDate"], "zeroColumns": zeros,
-                           "message": f"{name} 最新合计中 {','.join(zeros)} 列为0，已按原表加总；请核对分项的0是否表示尚未更新。"})
-    result = {"name": name, "color": color,
-              "data": [{"date": point["date"], "value": point["value"]} for point in selected],
-              "dateRange": {"first": valid[0]["date"], "last": valid[-1]["date"]},
-              "missingPointCount": len(selected) - len(valid), "sources": segments}
-    return result, {"name": name, "pointCount": len(selected), "validPointCount": len(valid),
-                    "dateRange": result["dateRange"], "missingPointCount": result["missingPointCount"], "sources": reports}
-
-
 def extract_dashboard(source, years=6, supply_years=8):
     if not 1 <= years <= 100 or not 1 <= supply_years <= 100:
         raise ValueError("历史年数需为 1 到 100 之间的整数。")
-    sheets, epoch, sheet_count = load_sources(source)
+    chart_definitions = read_chart_definitions(source)
+    sheets, epoch, sheet_count = load_sources(source, chart_definitions)
     validate_layout(sheets)
     issues = []
     metrics, weekly_dates = read_weekly(sheets["周报输出"], epoch, issues)
@@ -429,23 +222,14 @@ def extract_dashboard(source, years=6, supply_years=8):
         raise ValueError("周报日期晚于目录数据库日期，请先核对 Table of Contents!B7 与 周报输出!E5。")
     version_date = filename_date(source)
     if version_date and version_date != update_date:
-        issues.append({"code": "filename_date_differs", "message": f"文件名日期为 {version_date}，目录数据库日期为 {update_date}，分别保留；图表以目录日期为截止。"})
+        issues.append({"code": "filename_date_differs", "message": f"文件名日期为 {version_date}，目录数据库日期为 {update_date}；总览图表按周报日期截止，煤种明细保留实际观测期。"})
     by_name = {item["metric"]: item for item in metrics}
     missing_cards = [name for name in SUMMARY_METRICS if name not in by_name]
     if missing_cards:
         raise ValueError("周报缺少顶部卡片指标：" + "、".join(missing_cards))
-    charts, chart_reports = [], []
-    for chart_id, title, subtitle, unit, frequency, lag_days, mapping in CHARTS:
-        series, series_reports = [], []
-        for index, (name, specs) in enumerate(mapping.items()):
-            item, report = build_series(name, specs, sheets, epoch, update_date,
-                supply_years if chart_id == "supply" else years, lag_days,
-                COLORS[index % len(COLORS)], issues)
-            series.append(item)
-            series_reports.append(report)
-        charts.append({"id": chart_id, "title": title, "subtitle": subtitle, "unit": unit,
-                       "frequency": frequency, "series": series})
-        chart_reports.append({"id": chart_id, "series": series_reports})
+    charts, chart_reports, chart_warnings = extract_weekly_charts(
+        sheets, chart_definitions, as_date, epoch, weekly_dates["weeklyDate"], years)
+    issues.extend(chart_warnings)
     generated_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
     thermal_coal, thermal_report = extract_thermal(sheets, epoch, as_date, column_index_from_string)
     coking_coal, coking_report = extract_coking(sheets, epoch, as_date, column_index_from_string)
@@ -455,7 +239,7 @@ def extract_dashboard(source, years=6, supply_years=8):
                  **{name: value.isoformat() for name, value in weekly_dates.items()},
                  "generatedAt": generated_at, "timezone": "Asia/Shanghai", "sheetCount": sheet_count,
                  "sourceFileDate": version_date.isoformat() if version_date else None,
-                 "databaseDateSource": date_source, "schemaVersion": "2.2", "historyYears": years,
+                 "databaseDateSource": date_source, "schemaVersion": "2.3", "historyYears": years,
                  "supplyHistoryYears": supply_years,
                  "formulaPolicy": "使用Excel已保存的计算结果；不重新计算公式"},
         "summaryCards": [by_name[name] for name in SUMMARY_METRICS],

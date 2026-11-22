@@ -18,11 +18,12 @@
     <span class="nav-label">数据导航</span>
     <nav id="overview-nav" aria-label="总览导航">
       <a class="nav-item active" href="#top"><span aria-hidden="true">◈</span> 数据总览</a>
-      <a class="nav-item" href="#chart-price"><span aria-hidden="true">↗</span> 价格走势</a>
-      <a class="nav-item" href="#chart-inventory"><span aria-hidden="true">▤</span> 港口库存</a>
-      <a class="nav-item" href="#chart-transport"><span aria-hidden="true">⇄</span> 港口运输</a>
-      <a class="nav-item" href="#chart-power"><span aria-hidden="true">ϟ</span> 电力需求</a>
-      <a class="nav-item" href="#chart-supply"><span aria-hidden="true">▥</span> 煤炭供给</a>
+      <a class="nav-item" href="#chart-price"><span aria-hidden="true">↗</span> 港口5500煤价</a>
+      <a class="nav-item" href="#chart-international"><span aria-hidden="true">↗</span> 国际动力煤价</a>
+      <a class="nav-item" href="#chart-plant-use"><span aria-hidden="true">ϟ</span> 二十五省日耗</a>
+      <a class="nav-item" href="#chart-plant-stock"><span aria-hidden="true">▤</span> 二十五省库存</a>
+      <a class="nav-item" href="#chart-coking-price"><span aria-hidden="true">↗</span> 炼焦煤价格</a>
+      <a class="nav-item" href="#chart-hot-metal"><span aria-hidden="true">▥</span> 日均铁水产量</a>
       <a class="nav-item" href="#weekly"><span aria-hidden="true">≡</span> 周报指标</a>
     </nav>
     <div class="sidebar-foot"><span class="live-dot" aria-hidden="true"></span> Excel 数据快照<p id="source-name">正在加载数据</p></div>
@@ -48,9 +49,9 @@
       <ul id="quality-list"></ul>
     </details>
     <section aria-labelledby="trends-title" class="trends-section">
-      <div class="section-heading"><div><p class="eyebrow">MARKET TRENDS</p><h2 id="trends-title">市场趋势</h2></div><span>各序列保留自身更新日期</span></div>
+      <div class="section-heading"><div><p class="eyebrow">WEEKLY CHARTS</p><h2 id="trends-title">周报图表</h2></div><span>图项和指标来自“周报输出”</span></div>
       <form id="date-filter" class="filter-bar">
-        <span class="filter-label">图表区间</span>
+        <span class="filter-label">连续走势图区间</span>
         <div class="range-buttons" role="group" aria-label="快捷日期范围"><button type="button" data-years="1" class="selected" aria-pressed="true">近一年</button><button type="button" data-years="3" aria-pressed="false">近三年</button><button type="button" data-years="all" aria-pressed="false">全部</button></div>
         <div class="date-fields"><label><span class="sr-only">开始日期</span><input id="start-date" type="date" required></label><span aria-hidden="true">—</span><label><span class="sr-only">结束日期</span><input id="end-date" type="date" required></label><button class="apply-button" type="submit">应用</button></div>
         <p id="date-error" class="date-error" role="alert" hidden></p>
