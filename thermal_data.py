@@ -279,7 +279,9 @@ THERMAL_GROUPS = (
     ("ten-day", "下游旬度发电", (
         panel("generation", "旬度日均发电量", ten_day_series()),
         panel("growth", "旬度发电同比", ten_day_series(True)),
-        panel("three-gorges", "三峡水库出库流量", (
+    )),
+    ("three-gorges", "三峡出库流量", (
+        panel("three-gorges", "三峡出库流量", (
             metric("three-gorges", "三峡出库流量", "立方米/秒", "daily", TEN_DAY, "CN", "CO", 9,
                    (("CO7", "中国:流量(出库):水库站:三峡"), ("CO8", "立方米/秒")), demand_ids=(35,)),
         )),
