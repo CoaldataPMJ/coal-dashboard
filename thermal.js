@@ -1,19 +1,11 @@
 (() => {
   'use strict';
 
-  const seasons = ['#246e9d', '#bb4b54', '#328478', '#7955a3', '#2c456a', '#b9651a', '#6e7b3e', '#7b5862'];
+  const seasons = ['#002c6a', '#a6e8f8', '#00b5e8', '#ff5969', '#e00000', '#ffb800'];
   const palette = ['#226d70', '#d16439', '#387bb0', '#8762a5', '#7e8847', '#ad416d', '#765747'];
   const dayMs = 86400000;
   const seasonStart = Date.UTC(2000, 0, 1);
   const frequencies = { daily: '日度', weekly: '周度', tenDay: '旬度', monthly: '月度', ytd: '月度累计' };
-  const qualityLabels = {
-    estimated: '原表分摊/推算', combined: '1–2 月合计', coverage: '分港覆盖未确认', missing: '源值缺失',
-    'excel-error': 'Excel 源值错误', placeholder: '源值为占位',
-  };
-  const compareLabels = {
-    'no-base': '无对应基期', missing: '本期无有效值', 'year-reset': '年初重新累计',
-    'nonpositive-base': '基期非正值', 'different-period': '基期统计区间不同',
-  };
   const at = id => document.getElementById(id);
   const numeric = value => typeof value === 'number' && Number.isFinite(value);
   const monthStart = month => Date.UTC(2000, month - 1, 1);
@@ -55,7 +47,7 @@
     return date;
   }
 
-  window.initThermalDashboard = ({ data: thermalData, cokingData, loadFailures = {}, renderPlot, node, timestamp, iso, number, renderOverview }) => {
+  window.initThermalDashboard = ({ data: thermalData, cokingData, overseasData, supplyData, loadFailures = {}, renderPlot, node, timestamp, iso, number, renderOverview }) => {
     const view = at('thermal-view');
     const plot = at('thermal-plot');
     const chartCard = at('thermal-card');
@@ -66,6 +58,10 @@
       thermal: { label: '动力煤', dataset: thermalData, loadFailure: loadFailures.thermalCoal,
         mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
       coking: { label: '炼焦煤', dataset: cokingData, loadFailure: loadFailures.cokingCoal,
+        mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
+      overseas: { label: '海外能源', dataset: overseasData, loadFailure: loadFailures.overseasEnergy,
+        mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
+      supply: { label: '产量及进口', dataset: supplyData, loadFailure: loadFailures.supply,
         mode: { seasonal: false, monthStart: 1, monthEnd: 12 } },
     };
     let topic, data, mode, currentGroup, currentPanel, resizeTimer;
@@ -83,9 +79,10 @@
         const series = data.series[id];
         let previous;
         const decode = ([value, base, status, estimated, absolute]) => [value, data.dates[base], status, estimated, absolute];
-        const points = series.points.map(([dateIndex, value, mom, yoy, quality]) => {
+        const points = series.points.filter(point => data.dates[point[0]] >= '2021-01-01' && data.dates[point[0]] <= '2026-12-31')
+          .map(([dateIndex, value, mom, yoy]) => {
           const date = data.dates[dateIndex];
-          const point = { date, value, mom: decode(mom), yoy: decode(yoy), quality, time: timestamp(date),
+          const point = { date, value, mom: decode(mom), yoy: decode(yoy), time: timestamp(date),
             breakBefore: isGap(previous, date, series) };
           previous = date;
           return point;
@@ -101,20 +98,15 @@
       const selected = currentPanel.seriesIds.filter(id => !state.hidden.has(id)).map(id => data.series[id]);
       const available = selected.filter(series => series.latestValidDate);
       const latest = available.map(series => series.latestValidDate).sort().pop();
-      const earliest = available.map(series => series.firstValidDate).sort()[0];
       state.preset = preset;
       if (!latest) return;
       if (preset === 'all') {
-        state.start = earliest;
-        state.end = latest;
+        state.start = '2021-01-01';
+        state.end = latest < '2026-12-31' ? latest : '2026-12-31';
         return;
       }
-      const [year, month, day] = dateParts(latest);
-      const targetYear = year - Number(preset);
-      const dayLimit = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
-      const begin = iso(Date.UTC(targetYear, month - 1, Math.min(day, dayLimit)));
-      state.start = begin < earliest ? earliest : begin;
-      state.end = latest;
+      state.start = `${preset}-01-01`;
+      state.end = latest.startsWith(preset) ? latest : `${preset}-12-31`;
     }
 
     function groupButtons(groups) {
@@ -133,7 +125,7 @@
       if (!panelState.has(key)) {
         const available = panel.seriesIds.find(id => data.series[id].latestValidDate) ?? panel.seriesIds[0];
         panelState.set(key, { hidden: new Set(), selected: available, years: new Map(), start: '', end: '' });
-        setPreset('1');
+        setPreset('2026');
       }
       at('thermal-panel').value = panel.id;
       render();
@@ -149,13 +141,13 @@
     }
 
     function updateRoute() {
-      const route = /^#(thermal|coking)(?:\/([a-z0-9-]+))?$/.exec(window.location.hash);
+      const route = /^#(thermal|coking|overseas|supply)(?:\/([a-z0-9-]+))?$/.exec(window.location.hash);
       const showDetails = Boolean(route);
       view.hidden = !showDetails;
       at('overview-view').hidden = showDetails;
       at('overview-nav').hidden = showDetails;
       const active = route?.[1] ?? 'overview';
-      for (const section of ['overview', 'thermal', 'coking']) {
+      for (const section of ['overview', 'thermal', 'coking', 'overseas', 'supply']) {
         const link = at(`view-${section}`);
         if (section === active) link.setAttribute('aria-current', 'page');
         else link.removeAttribute('aria-current');
@@ -193,8 +185,8 @@
       return state.years.get(series.id);
     }
 
-    function colorForYear(year, years) {
-      return seasons[years.indexOf(year) % seasons.length];
+    function colorForYear(year) {
+      return seasons[year - 2021] ?? seasons[0];
     }
 
     function updateControls(activeSeries) {
@@ -279,19 +271,14 @@
     }
 
     function comparisonText(change, series) {
-      const [value, base, status, estimated, absolute] = change;
-      if (!numeric(value)) {
-        const difference = numeric(absolute) ? `，差额 ${number(absolute)} ${series.unit}` : '';
-        return `—（${compareLabels[status] ?? '无对应期'}${base ? `，${base}` : ''}${difference}）`;
-      }
+      const [value] = change;
+      if (!numeric(value)) return '—';
       const unit = series.changeUnit === 'pp' ? ' 个百分点' : series.changeUnit === '%' ? '%' : ` ${series.unit}`;
       const display = series.changeUnit === 'absolute' ? value : value * 100;
-      const method = status === 'reported' ? '原表' : '计算';
-      const baseNote = base ? `${method}，基期 ${base}` : `${method}，基期未列明`;
-      return `${display > 0 ? '+' : ''}${number(display)}${unit}（${baseNote}${estimated ? '，基期含分摊' : ''}）`;
+      return `${display > 0 ? '+' : ''}${number(display)}${unit}`;
     }
 
-    function plotTooltip(tooltip, seriesList, dates, time) {
+    function plotTooltip(tooltip, seriesList, dates, time, focusedIndex) {
       const title = at('thermal-chart-name').textContent;
       const fragment = document.createDocumentFragment();
       const frequency = seriesList[0].frequency;
@@ -302,6 +289,7 @@
         : periodLabel(iso(time), frequency);
       fragment.append(node('time', '', heading));
       for (const [index, series] of seriesList.entries()) {
+        if (focusedIndex != null && index !== focusedIndex) continue;
         let point = dates[index].get(time);
         if (!point && mode.seasonal && series.frequency === 'weekly') {
           point = dates[index].get(series.byWeek.get(weekPosition(time)));
@@ -316,9 +304,9 @@
         section.append(row);
         if (point) {
           const period = periodLabel(point.date, series.frequency);
-          section.append(node('small', '', `${period}${point.quality ? ` · ${qualityLabels[point.quality]}` : ''}`));
-          if (numeric(point.value)) {
-            const mom = series.frequency === 'ytd' ? '累计较上月' : '环比';
+          section.append(node('small', '', period));
+          if (numeric(point.value) && (numeric(point.mom[0]) || numeric(point.yoy[0]))) {
+            const mom = { daily: '月环比', weekly: '周环比', tenDay: '旬环比', monthly: '月环比', ytd: '累计月环比' }[series.frequency];
             section.append(node('small', '', `${mom} ${comparisonText(point.mom, series)}`),
                            node('small', '', `同比 ${comparisonText(point.yoy, series)}`));
           }
@@ -336,7 +324,7 @@
       const byWeek = series.frequency === 'weekly'
         ? new Map(points.map(point => [weekPosition(point.time), point.time]))
         : new Map();
-      return { ...series, data: points, byWeek, year, color: colorForYear(year, series.years) };
+      return { ...series, data: points, byWeek, year, color: colorForYear(year), lineWidth: year === 2026 ? 3.5 : 2 };
     }
 
     function draw() {
@@ -368,6 +356,10 @@
       };
       renderPlot({ title: at('thermal-chart-name').textContent, unit: selected.unit }, plot, {
         series, bounds, ticks, fillTooltip: plotTooltip,
+        matchPoint(series, dates, time) {
+          return dates.get(time) ?? (mode.seasonal && series.frequency === 'weekly'
+            ? dates.get(series.byWeek.get(weekPosition(time))) : undefined);
+        },
         formatValue: value => formatValue(value, selected.unit),
         rangeLabel: mode.seasonal ? `${mode.monthStart}月至${mode.monthEnd}月` : `${state.start}至${state.end}`,
       });
@@ -403,8 +395,8 @@
       event.preventDefault();
       const start = at('thermal-start').value;
       const end = at('thermal-end').value;
-      if (!start || !end || start > end) {
-        errorMessage('thermal-date-error', '开始日期不能晚于结束日期。');
+      if (!start || !end || start > end || start < '2021-01-01' || end > '2026-12-31') {
+        errorMessage('thermal-date-error', '请选择2021—2026年内的有效时间区间。');
         return;
       }
       Object.assign(current(), { start, end, preset: '' });
@@ -433,4 +425,3 @@
     updateRoute();
   };
 })();
-

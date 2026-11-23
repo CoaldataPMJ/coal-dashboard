@@ -151,11 +151,11 @@ COUNTRY_IMPORTS = tuple(
 
 
 COKING_GROUPS = (
-    ("steel", "铁水与高炉", STEEL_PANELS),
     ("price", "炼焦煤价格", PRICE_PANELS),
-    ("inventory", "库存及开工率", STOCK_PANELS),
-    ("downstream", "下游产量", tuple(downstream_panels())),
-    ("country-import", "焦煤分国别进口", (
+    ("steel", "247家钢厂高炉开工率", STEEL_PANELS),
+    ("inventory", "炼焦煤库存与下游开工率", STOCK_PANELS),
+    ("downstream", "炼焦煤下游产量", tuple(downstream_panels())),
+    ("country-import", "炼焦煤分国别进口", (
         panel("monthly", "焦煤分国别进口量", COUNTRY_IMPORTS,
               "原表单位为千吨，图中统一换算为万吨。美国及加拿大与其他沿用原表合计分类。"),
     )),

@@ -35,6 +35,8 @@ class Metric:
     cadence: str = ""
     reported: tuple[str, str] = ("", "")
     end_marker: str = ""
+    reported_scales: tuple[float, float] = (1, 1)
+    reported_only: bool = False
 
     @property
     def value_columns(self):
@@ -65,9 +67,9 @@ def price(series_id, name, column, unit="元/吨", date_col="BV", start=9,
 
 
 PRICE_PANELS = (
-    panel("spot", "港口现货", (
-        price("qinhuangdao5500", "秦皇岛5500港口现货", "F", date_col="A", start=6,
-              header="动力煤港口现货价格", demand_id=105),
+    panel("spot", "CCI5500", (
+        price("cci5500", "CCI5500", "B", date_col="A", start=6,
+              header="动力煤价格指数(RMB):CCI5500(含税)", demand_id=105),
     )),
     panel("ordos", "鄂尔多斯坑口", (
         price(f"ordos{heat}", f"内蒙古鄂尔多斯{heat}", column, demand_id=106 if heat == 5500 else None,
@@ -82,21 +84,11 @@ PRICE_PANELS = (
             ("changzhi5800", "山西长治5800", "CK", None),
         )
     )),
-    panel("other-mines", "陕西与新疆坑口", (
-        price("yulin5800", "陕西榆林5800", "CM", demand_id=108, price_type="坑口含税价"),
-        price("hami5500", "CCI新疆哈密5500", "CS", demand_id=109, price_type="坑口含税价"),
-    )),
-    panel("import-rmb", "进口到岸 · 人民币", (
-        price("import5500-cny", "CCI进口5500", "BW", demand_id=99, price_type="到岸价"),
-        price("import3800-cny", "CCI进口3800", "DJ", demand_id=100, price_type="到岸价"),
-    )),
     panel("import-usd", "进口到岸 · 美元", (
-        price("import5500-usd", "CCI进口5500", "BX", "美元/吨", price_type="到岸价"),
-        price("import3800-usd", "CCI进口3800", "DK", "美元/吨", price_type="到岸价"),
-        price("legacy-import4700", "CCI进口4700（历史）", "J", "美元/吨", "H", 6,
-              "动力煤价格指数(USD):CCI进口4700"),
-        price("legacy-import5500", "CCI进口5500（旧源）", "I", "美元/吨", "H", 6,
-              "动力煤价格指数(USD):CCI进口5500"),
+        metric("import4700-usd", "CCI进口4700", "美元/吨", "daily", "动力煤-价格", "A", "M", 6,
+               (("M4", "CCI进口4700"), ("M5", "美元/吨")), rule="positive"),
+        metric("import3800-usd", "CCI进口3800", "美元/吨", "daily", "动力煤-价格", "A", "N", 6,
+               (("N4", "CCI进口3800"), ("N5", "美元/吨")), rule="positive"),
     )),
     panel("international", "国际动力煤", (
         price(key, name, column, "美元/吨", date_column, 6, header, demand_id)
@@ -106,25 +98,6 @@ PRICE_PANELS = (
             ("richards-bay", "理查德 RB", "N", "M", "理查德RB动力煤现货价", 96),
             ("ara", "欧洲 ARA", "P", "M", "欧洲ARA港动力煤现货价", 97),
         )
-    )),
-    panel("legacy-ordos", "鄂尔多斯坑口 · 历史", (
-        price(f"legacy-ordos{heat}", f"内蒙古鄂尔多斯{heat}", column, date_col="AF", start=4)
-        for heat, column in ((5500, "AG"), (5000, "AH"), (4500, "AI"))
-    ), "汾渭旧数据。当前报价另列。"),
-    panel("legacy-shanxi", "山西坑口 · 历史", (
-        price(f"legacy-{key}", name, column, date_col="AK", start=4)
-        for key, name, column in (
-            ("shuozhou5000", "山西朔州5000", "AL"), ("datong5500", "山西大同5500", "AM"),
-            ("changzhi5800", "山西长治5800", "AN"),
-        )
-    ), "汾渭旧数据。当前报价另列。"),
-    panel("henry-hub", "美国 Henry Hub 气价", (
-        price("henry-hub", "NYMEX Henry Hub", "X", "美元/百万英热单位", "W", 7,
-              "期货收盘价(连续):NYMEX天然气", 93),
-    )),
-    panel("ttf", "荷兰 TTF 气价", (
-        price("ttf", "ICE TTF", "Y", "欧元/兆瓦时", "W", 7,
-              "期货结算价(连续):ICE荷兰TTF天然气", 92),
     )),
     panel("freight", "国际煤炭海运费", (
         price("freight-australia", "澳大利亚纽卡斯尔—中国舟山", "AC", "美元/吨", "AB", 6,
@@ -147,22 +120,19 @@ def fw_stock(series_id, name, columns, labels):
                   + [(f"{col}4", "万吨") for col in columns.split()])
 
 
-INVENTORY_PANELS = (
-    panel("cctd", "CCTD 主流港口", (
-        weekly_stock("cctd-total", "合计", "U", "V", "煤炭库存:CCTD主流港口:合计", 39),
-        weekly_stock("cctd-coastal", "沿海港口", "U", "W", "煤炭库存:CCTD主流港口:沿海港口", 40),
-        weekly_stock("cctd-river", "内河港口", "U", "X", "煤炭库存:CCTD主流港口:内河港口", 41),
-    ), "底表周度实际观测。"),
-    panel("historic-stocks", "长江口与北方港 · 历史", (
-        weekly_stock("yangtze-stock", "长江口库存", "P", "Q", "煤炭库存:长江口合计"),
-        weekly_stock("old-north-stock", "北方港库存", "S", "T", "煤炭库存:北方港港口:合计"),
-    )),
-    panel("fw1203d", "FW1203D 北方港口", (
-        fw_stock("fw-stock-total", "北方港合计", "B", ("合计",)),
-        fw_stock("fw-stock-qhd", "秦皇岛港", "C", ("秦皇岛港",)),
-        fw_stock("fw-stock-cfd", "曹妃甸港群", "G H I J K",
-                 ("国投曹妃甸港", "国储曹妃甸港", "曹妃甸港二期", "华能曹妃甸港", "华电曹妃甸港")),
-    ), "曹妃甸港群为五个码头库存合计。"),
+INVENTORY_PANELS = tuple(
+    panel(key, name, (metric(
+        key, name, "万吨", "daily", "动力煤-港口库存", "A", column, 6,
+        ((f"{title_column}3", title), (f"{column}4", "库存"), (f"{column}5", "万吨")),
+        reported=(mom, yoy), end_marker="Source",
+    ),))
+    for key, name, column, title_column, title, mom, yoy in (
+        ("yangtze-stock", "长江口库存", "B", "C", "长江口库存", "C", "D"),
+        ("north-stock", "北方港港口库存", "E", "F", "北方港港口", "F", "G"),
+        ("cctd-total", "CCTD主流港口·合计", "H", "I", "CCTD主流港口:合计", "I", "J"),
+        ("cctd-coastal", "CCTD主流港口·沿海", "K", "L", "CCTD主流港口:沿海港口", "L", "M"),
+        ("cctd-river", "CCTD主流港口·内河", "N", "O", "CCTD主流港口:内河港口", "O", "P"),
+    )
 )
 
 PORTS = ("秦皇岛港", "曹妃甸港", "黄骅港")
@@ -180,7 +150,7 @@ def transport_panels():
     configs = (
         ("in", "铁路调入", "万吨", 0), ("out", "港口吞吐", "万吨", 1),
         ("ships", "锚地船舶", "艘", 2), ("stock", "三港库存", "万吨", 3),
-        ("balance", "调入减吞吐", "千吨", 4),
+        ("balance", "港口供需平衡", "千吨", 4),
     )
     for panel_id, name, unit, index in configs:
         subsets = ("K", "L", "M") if index == 3 else tuple(
@@ -204,7 +174,8 @@ def plant_panel(prefix, sheet, first_id):
         ("supply", "供煤", "K", "L", "万吨"),
     )):
         item = metric(f"{prefix}-{key}", label, unit, "daily", sheet, "A", column, 6,
-                      ((f"{title_column}4", label), (f"{column}5", unit)), demand_ids=(first_id + index,))
+                      ((f"{title_column}4", label), (f"{column}5", unit)), demand_ids=(first_id + index,),
+                      rule="positive" if prefix == "plants25" else "value")
         metrics.append(panel(key, label, (item,)))
     return tuple(metrics)
 
@@ -227,7 +198,7 @@ def power_panels():
             series.append(metric(f"power-{panel_id}-{key}", name, unit, frequency, POWER, "A", col, 6,
                                  ((f"{col}4", header), (f"{col}5", unit)), demand_ids=(first_id + index,),
                                  reported=(mom[index] if mom else "", yoy[index] if yoy else ""),
-                                 rule="monthly_split"))
+                                 rule="monthly_split", reported_only=True))
         yield panel(panel_id, title, series, "其他为总发电减火电和水电。")
     yield panel("gd-electricity", "广东日前现货平均电价", (
         metric(key, name, "元/兆瓦时", "daily", PRICE, "EG", col, 7,
@@ -301,20 +272,20 @@ THERMAL_GROUPS = (
     ("price", "价格", PRICE_PANELS),
     ("inventory", "港口库存", INVENTORY_PANELS),
     ("transport", "港口运输", tuple(transport_panels())),
-    ("plants25", "二十五省汇总", plant_panel("plants25", "动力煤-二十五省汇总", 9)),
-    ("inland", "内陆电厂", plant_panel("inland", "动力煤-内陆电厂", 1)),
-    ("coastal", "沿海电厂", plant_panel("coastal", "动力煤-沿海电厂", 5)),
-    ("power", "下游发电", tuple(power_panels())),
-    ("chemical", "下游化工周度", (
-        panel("total", "五类化工合计耗煤", CHEMICALS[:1]), panel("parts", "化工分项耗煤", CHEMICALS[1:]),
-    )),
-    ("ten-day", "下游旬度", (
+    ("plants25", "二十五省电厂汇总", plant_panel("plants25", "动力煤-二十五省汇总", 9)),
+    ("inland", "内陆十七省电厂", plant_panel("inland", "动力煤-内陆电厂", 1)),
+    ("coastal", "沿海八省电厂", plant_panel("coastal", "动力煤-沿海电厂", 5)),
+    ("power", "下游月度发电", tuple(power_panels())),
+    ("ten-day", "下游旬度发电", (
         panel("generation", "旬度日均发电量", ten_day_series()),
         panel("growth", "旬度发电同比", ten_day_series(True)),
         panel("three-gorges", "三峡水库出库流量", (
             metric("three-gorges", "三峡出库流量", "立方米/秒", "daily", TEN_DAY, "CN", "CO", 9,
                    (("CO7", "中国:流量(出库):水库站:三峡"), ("CO8", "立方米/秒")), demand_ids=(35,)),
         )),
+    )),
+    ("chemical", "下游化工周度", (
+        panel("total", "五类化工合计耗煤", CHEMICALS[:1]), panel("parts", "化工分项耗煤", CHEMICALS[1:]),
     )),
     ("industry-use", "分行业煤耗", tuple(industry_use_panels())),
     ("country-import", "分国别进口", (
@@ -375,6 +346,8 @@ def compare(spec, current, reference, reported, target):
     if finite(reported):
         result = [round(reported, 8), basis, "reported"]
         return result + [True] if reference and reference[1][1] == "estimated" else result
+    if spec.reported_only:
+        return [None, None, "not-reported"]
     if not reference:
         return [None, None, "no-base"]
     base, quality, _ = reference[1]
@@ -457,7 +430,8 @@ def read_metric(spec, sheet, parse_date, epoch, col_index, monthly_calendar, com
         def get(column):
             return row[indices[column]] if column and indices[column] < len(row) else None
         value, quality = row_value(spec, [get(col) for col in spec.columns])
-        rates = tuple(get(col) for col in spec.reported)
+        rates = tuple(get(col) * scale if finite(get(col)) else None
+                      for col, scale in zip(spec.reported, spec.reported_scales))
         if spec.sheet == TRANSPORT and set(spec.columns) & transport_check(get, day):
             value, quality = None, "coverage"
         if spec.rule == "monthly_split" and value is not None and (day.year, day.month) in estimated_periods:
@@ -525,18 +499,22 @@ def extract_thermal(sheets, epoch, parse_date, col_index):
                           POWER, "N", COMBINED_POWER_COLUMNS)
 
 
-def extract_detail(config, label, sheets, epoch, parse_date, col_index, monthly_sheet, cumulative_col,
-                   combined_columns, extra_split_days=()):
+def extract_detail(config, label, sheets, epoch, parse_date, col_index, monthly_sheet=None, cumulative_col=None,
+                   combined_columns=None, extra_split_days=()):
     series, groups, reports = {}, [], []
     dates, date_indices = [], {}
     monthly_calendar = monthly_periods(sheets[monthly_sheet], parse_date, epoch,
-                                       col_index(cumulative_col) - 1, extra_split_days)
+                                       col_index(cumulative_col) - 1, extra_split_days) if monthly_sheet else (set(), set())
     for group_id, group_name, panels in config:
         visible_panels = []
         for panel_id, title, metrics, note in panels:
             for spec in metrics:
                 item, report = read_metric(spec, sheets[spec.sheet], parse_date, epoch, col_index,
-                                           monthly_calendar, combined_columns)
+                                           monthly_calendar, combined_columns or {})
+                item["points"] = [point for point in item["points"] if "2021-01-01" <= point[0] <= "2026-12-31"]
+                valid = [point for point in item["points"] if point[1] is not None]
+                item["firstValidDate"] = valid[0][0] if valid else None
+                item["latestValidDate"] = valid[-1][0] if valid else None
                 for point in item["points"]:
                     for record, field in ((point, 0), (point[2], 1), (point[3], 1)):
                         stamp = record[field]

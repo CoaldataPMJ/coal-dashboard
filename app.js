@@ -28,10 +28,6 @@
     }
     const overviewEnd = data.meta.weeklyDate || data.meta.databaseDate;
     const state = { section: '全部', search: '', start: '', end: overviewEnd };
-    const latest = timestamp(overviewEnd);
-    const datedCharts = data.charts.filter(chart => !chart.seasonal);
-    const earliest = Math.min(...(datedCharts.length ? datedCharts : data.charts).flatMap(chart => chart.series.flatMap(series =>
-      series.data.length ? [timestamp(series.data[0].date)] : [])));
     const hiddenSeries = new Map();
     const charts = new Map();
 
@@ -55,8 +51,9 @@
 
     function changeNode(metric, field = 'wow') {
       const value = metric[field];
+      const label = field === 'wow' ? `${metric.wowLabel || '周环比'} ` : '';
       return node('span', `change ${!finite(value) || value === 0 ? 'flat' : value > 0 ? 'up' : 'down'}`,
-        changeText(metric, field));
+        label + changeText(metric, field));
     }
 
     data.summaryCards.forEach((metric, index) => {
@@ -81,11 +78,8 @@
     }
 
     function selectRange(years) {
-      const date = new Date(latest);
-      const candidate = years === 'all' ? earliest
-        : Date.UTC(date.getUTCFullYear() - Number(years), date.getUTCMonth(), date.getUTCDate());
-      state.start = iso(Math.max(candidate, earliest));
-      state.end = overviewEnd;
+      state.start = years === 'all' ? '2021-01-01' : `${years}-01-01`;
+      state.end = years === 'all' || overviewEnd.startsWith(String(years)) ? overviewEnd : `${years}-12-31`;
       $('#start-date').value = state.start;
       $('#end-date').value = state.end;
       $('#date-error').hidden = true;
@@ -162,7 +156,8 @@
           path += `${drawing ? 'L' : 'M'}${x(point.time).toFixed(2)},${y(point.value).toFixed(2)} `;
           drawing = true;
         });
-        svg.append(svgNode('path', { d: path, class: 'data-line', stroke: series.color }));
+        svg.append(svgNode('path', { d: path, class: 'data-line', stroke: series.color,
+          style: `stroke-width:${series.lineWidth ?? (series.name === '2026' ? 3.5 : 2)}` }));
         const validPoints = series.points.filter(point => finite(point.value));
         const isolated = options.bounds ? series.points.filter((point, index, points) => finite(point.value) &&
           (point.breakBefore || !finite(points[index - 1]?.value)) &&
@@ -171,22 +166,33 @@
       });
       const crosshair = svgNode('line', { x1: 0, x2: 0, y1: margin.top, y2: height - margin.bottom, class: 'crosshair', style: 'display:none' });
       svg.append(crosshair);
+      const pointMarkers = svgNode('g', { class: 'hover-points', 'pointer-events': 'none' });
+      svg.append(pointMarkers);
       const tooltip = node('div', 'plot-tooltip');
       tooltip.setAttribute('role', 'tooltip');
       const dates = [...new Set(visible.flatMap(series => series.points.map(point => point.time)))].sort((a, b) => a - b);
       const byDate = visible.map(series => new Map(series.points.map(point => [point.time, point])));
       let focusIndex = dates.length - 1;
-      function showTooltip(index, pointerY = 30) {
+      function showTooltip(index, pointerY = 30, focusedSeriesIndex = null) {
         if (!dates.length) return;
         focusIndex = index;
         const day = dates[index], position = x(day);
         crosshair.style.display = '';
         crosshair.setAttribute('x1', position);
         crosshair.setAttribute('x2', position);
-        if (options.fillTooltip) options.fillTooltip(tooltip, visible, byDate, day);
+        pointMarkers.replaceChildren();
+        visible.forEach((series, seriesIndex) => {
+          if (focusedSeriesIndex != null && focusedSeriesIndex !== seriesIndex) return;
+          const point = options.matchPoint ? options.matchPoint(series, byDate[seriesIndex], day) : byDate[seriesIndex].get(day);
+          if (point && finite(point.value)) pointMarkers.append(svgNode('circle', {
+            cx: x(point.time), cy: y(point.value), r: 5, fill: series.color, stroke: '#ffffff', 'stroke-width': 2,
+          }));
+        });
+        if (options.fillTooltip) options.fillTooltip(tooltip, visible, byDate, day, focusedSeriesIndex);
         else {
           tooltip.replaceChildren(node('time', '', iso(day)));
           visible.forEach((series, seriesIndex) => {
+            if (focusedSeriesIndex != null && seriesIndex !== focusedSeriesIndex) return;
             const row = node('div', 'tooltip-row');
             row.append(node('span', '', series.name), node('strong', '', number(byDate[seriesIndex].get(day)?.value)));
             tooltip.append(row);
@@ -196,16 +202,29 @@
         tooltip.style.left = `${Math.max(4, Math.min(width - tooltip.offsetWidth - 4, position + 12))}px`;
         tooltip.style.top = `${Math.max(3, Math.min(height - tooltip.offsetHeight - 4, pointerY))}px`;
       }
-      function hideTooltip() { tooltip.style.display = 'none'; crosshair.style.display = 'none'; }
+      function hideTooltip() { tooltip.style.display = 'none'; crosshair.style.display = 'none'; pointMarkers.replaceChildren(); }
+      const pointTimes = visible.map(series => series.points.map(point => point.time));
       function pointAt(event) {
         const box = svg.getBoundingClientRect();
         const mouseX = (event.clientX - box.left) / box.width * width;
         if (mouseX < margin.left || mouseX > width - margin.right) { hideTooltip(); return; }
         const requested = start + (mouseX - margin.left) / innerWidth * (end - start);
-        showTooltip(nearestIndex(dates, requested), event.clientY - box.top + 10);
+        const mouseY = (event.clientY - box.top) / box.height * height;
+        let nearest = null;
+        visible.forEach((series, seriesIndex) => {
+          if (!series.points.length) return;
+          const index = nearestIndex(pointTimes[seriesIndex], requested);
+          for (const point of series.points.slice(Math.max(0, index - 1), index + 2)) {
+            if (!finite(point.value)) continue;
+            const distance = (x(point.time) - mouseX) ** 2 + (y(point.value) - mouseY) ** 2;
+            if (!nearest || distance < nearest.distance) nearest = { point, seriesIndex, distance };
+          }
+        });
+        if (nearest) showTooltip(nearestIndex(dates, nearest.point.time), event.clientY - box.top + 10, nearest.seriesIndex);
+        else hideTooltip();
       }
       svg.addEventListener('pointermove', pointAt);
-      if (options.fillTooltip) svg.addEventListener('pointerdown', pointAt);
+      svg.addEventListener('pointerdown', pointAt);
       svg.addEventListener('pointerleave', event => { if (event.pointerType !== 'touch') hideTooltip(); });
       svg.addEventListener('blur', hideTooltip);
       svg.addEventListener('keydown', event => {
@@ -231,10 +250,11 @@
         ticks: width => Array.from({ length: 12 }, (_, index) => index)
           .filter(index => width >= 450 || index % 2 === 0)
           .map(index => [Date.UTC(2000, index, 1), `${index + 1}月`]),
-        fillTooltip(tooltip, visible, byDate, day) {
+        fillTooltip(tooltip, visible, byDate, day, focusedIndex) {
           const monthly = chart.frequency === '月度均值';
           tooltip.replaceChildren(node('time', '', monthly ? `${new Date(day).getUTCMonth() + 1}月` : iso(day).slice(5)));
           visible.forEach((series, index) => {
+            if (focusedIndex != null && focusedIndex !== index) return;
             const point = byDate[index].get(day);
             const row = node('div', 'tooltip-row');
             const period = point?.sourceDate ? (monthly ? point.sourceDate.slice(0, 7) : point.sourceDate) : series.name;
@@ -351,8 +371,9 @@
     $('#date-filter').addEventListener('submit', event => {
       event.preventDefault();
       const start = $('#start-date').value, end = $('#end-date').value;
-      if (!start || !end || start > end || !Number.isFinite(timestamp(start)) || !Number.isFinite(timestamp(end))) {
-        $('#date-error').textContent = '请选择有效日期，开始日期不能晚于结束日期。';
+      if (!start || !end || start > end || start < '2021-01-01' || end > '2026-12-31'
+        || !Number.isFinite(timestamp(start)) || !Number.isFinite(timestamp(end))) {
+        $('#date-error').textContent = '请选择2021—2026年内的有效时间区间。';
         $('#date-error').hidden = false;
         return;
       }
@@ -390,10 +411,11 @@
     $$('.nav-item').forEach(link => link.addEventListener('click', () => {
       $$('.nav-item').forEach(item => item.classList.toggle('active', item === link));
     }));
-    selectRange('1');
+    selectRange('2026');
     renderTable();
     window.initThermalDashboard?.({ data: data.thermalCoal, cokingData: data.cokingCoal,
       loadFailures: window.COAL_DATA_LOAD_FAILURES,
+      overseasData: data.overseasEnergy, supplyData: data.supply,
       renderPlot, node, timestamp, iso, number, renderOverview: renderCharts });
   } catch (error) {
     const box = $('#load-error');
@@ -402,4 +424,3 @@
     console.error(error);
   }
 })();
-

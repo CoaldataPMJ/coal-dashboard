@@ -16,6 +16,7 @@
 .data-attribution strong { margin-right: 8px; color: var(--ink); font-weight: 600; }
 .data-attribution a { color: var(--teal); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
 .view-switch { display: inline-flex; gap: 3px; padding: 4px; margin: 0 0 22px; border: 1px solid var(--line); border-radius: 8px; background: #eaf0f1; }
+.view-switch, .range-buttons { flex-wrap: wrap; max-width: 100%; }
 .view-switch a, .view-switch button { padding: 6px 18px; border: 0; border-radius: 5px; background: transparent; color: #526672; font: inherit; }
 .view-switch [aria-current], .view-switch [aria-pressed="true"] { background: #fff; color: var(--teal); font-weight: 650; box-shadow: 0 1px 4px #152f3b14; }
 .compact-switch { margin: 0; font-size: 12px; }
@@ -33,6 +34,7 @@
 .thermal-year input { accent-color: var(--teal); }
 .thermal-card:last-child .thermal-plot { height: clamp(300px, 47vw, 510px); }
 .thermal-tooltip { width: min(355px, 100%); padding: 8px 10px; }
+.hover-points circle { filter: drop-shadow(0 1px 2px #172d3a55); }
 .thermal-tooltip time { margin: 0; }
 .thermal-tip-row { padding: 3px 0; border-bottom: 1px solid #edf1f2; }
 .thermal-tip-row:last-child { border-bottom: 0; }

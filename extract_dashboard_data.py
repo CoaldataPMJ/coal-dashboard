@@ -28,6 +28,8 @@ from openpyxl.utils.exceptions import InvalidFileException
 from coking_data import COKING_GROUPS, extract_coking
 from thermal_data import THERMAL_GROUPS, detail_specs, extract_thermal
 from weekly_charts import chart_requirements, extract_weekly_charts, read_chart_definitions
+from overseas_data import OVERSEAS_GROUPS, extract_overseas
+from supply_data import SUPPLY_GROUPS, extract_supply
 
 
 ROOT = Path(__file__).resolve().parent
@@ -112,6 +114,8 @@ def discover_source(source=None, search_dirs=None):
 def source_specs():
     yield from detail_specs(THERMAL_GROUPS)
     yield from detail_specs(COKING_GROUPS)
+    yield from detail_specs(OVERSEAS_GROUPS)
+    yield from detail_specs(SUPPLY_GROUPS)
 
 
 def load_sources(source, chart_definitions):
@@ -189,6 +193,8 @@ def read_weekly(sheet, epoch, issues):
             "status": "ok" if is_number(current) else "unavailable",
             "valueIsFraction": "%" in sheet.formats.get(f"E{row_number}", ""),
             "changeType": "percentagePoints" if metric in POINT_CHANGE_METRICS else "relative",
+            "wowLabel": "旬环比" if "旬度" in str(metric) or "旬度环比" in str(note) else
+                        "月环比" if "月度环比" in str(note) else "周环比",
             "sourceErrors": source_errors,
         }
         metrics.append(item)
@@ -233,23 +239,26 @@ def extract_dashboard(source, years=6, supply_years=8):
     generated_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
     thermal_coal, thermal_report = extract_thermal(sheets, epoch, as_date, column_index_from_string)
     coking_coal, coking_report = extract_coking(sheets, epoch, as_date, column_index_from_string)
+    overseas, overseas_report = extract_overseas(sheets, epoch, as_date, column_index_from_string)
+    supply, supply_report = extract_supply(sheets, epoch, as_date, column_index_from_string)
     data = {
         "meta": {"title": "中国煤炭高频数据看板", "source": source.name,
                  "databaseDate": update_date.isoformat(),
                  **{name: value.isoformat() for name, value in weekly_dates.items()},
                  "generatedAt": generated_at, "timezone": "Asia/Shanghai", "sheetCount": sheet_count,
                  "sourceFileDate": version_date.isoformat() if version_date else None,
-                 "databaseDateSource": date_source, "schemaVersion": "2.3", "historyYears": years,
+                 "databaseDateSource": date_source, "schemaVersion": "3.0", "historyYears": years,
                  "supplyHistoryYears": supply_years,
                  "formulaPolicy": "使用Excel已保存的计算结果；不重新计算公式"},
         "summaryCards": [by_name[name] for name in SUMMARY_METRICS],
         "weeklyMetrics": metrics, "charts": charts, "warnings": issues,
-        "thermalCoal": thermal_coal, "cokingCoal": coking_coal,
+        "thermalCoal": thermal_coal, "cokingCoal": coking_coal, "overseasEnergy": overseas, "supply": supply,
     }
     report = {"source": str(source), "meta": data["meta"], "summaryCards": len(data["summaryCards"]),
               "weeklyMetrics": len(metrics), "availableWeeklyMetrics": sum(m["status"] == "ok" for m in metrics),
               "weeklySections": list(dict.fromkeys(m["section"] for m in metrics)),
-              "charts": chart_reports, "warnings": issues, "thermalCoal": thermal_report, "cokingCoal": coking_report}
+              "charts": chart_reports, "warnings": issues, "thermalCoal": thermal_report, "cokingCoal": coking_report,
+              "overseasEnergy": overseas_report, "supply": supply_report}
     return data, report
 
 
@@ -290,6 +299,8 @@ def main(argv=None):
         "availableWeeklyMetrics": report["availableWeeklyMetrics"],
         "thermalGroups": len(data["thermalCoal"]["groups"]), "thermalSeries": len(data["thermalCoal"]["series"]),
         "cokingGroups": len(data["cokingCoal"]["groups"]), "cokingSeries": len(data["cokingCoal"]["series"]),
+        "overseasGroups": len(data["overseasEnergy"]["groups"]), "overseasSeries": len(data["overseasEnergy"]["series"]),
+        "supplyGroups": len(data["supply"]["groups"]), "supplySeries": len(data["supply"]["series"]),
         "charts": {chart["id"]: {series["name"]: len(series["data"]) for series in chart["series"]} for chart in data["charts"]},
         "warnings": report["warnings"]}, ensure_ascii=False, indent=2))
     return 0

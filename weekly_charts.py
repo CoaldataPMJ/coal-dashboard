@@ -26,7 +26,7 @@ CHART_LAYOUT = (
     ("coking-price", "炼焦煤价格", "元/吨", "日度", False),
     ("hot-metal", "日均铁水产量", "万吨/日", "月度均值", True),
 )
-COLORS = ("#eb6673", "#97ccdf", "#009cca", "#193d6c", "#d92828", "#e6ac00")
+COLORS = ("#002c6a", "#a6e8f8", "#00b5e8", "#ff5969", "#e00000", "#ffb800")
 
 
 def relations(archive, part):
@@ -167,8 +167,10 @@ def extract_weekly_charts(sheets, definitions, parse_date, epoch, end_date, year
                     future += 1
                 if value is None:
                     invalid += 1
-                if not definition["seasonal"] and actual_date < date(end_date.year - years, end_date.month,
-                                                                     min(end_date.day, calendar.monthrange(end_date.year - years, end_date.month)[1])):
+                if actual_date.year < 2021 or actual_date.year > 2026:
+                    continue
+                if not definition["seasonal"] and actual_date < max(date(2021, 1, 1), date(end_date.year - years, end_date.month,
+                                                                     min(end_date.day, calendar.monthrange(end_date.year - years, end_date.month)[1]))):
                     continue
                 point = {"date": display_date.isoformat(), "value": round(value, 6) if value is not None else None,
                          "sourceDate": actual_date.isoformat()}

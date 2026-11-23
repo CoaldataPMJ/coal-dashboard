@@ -38,6 +38,8 @@
       <a id="view-overview" href="#top" aria-current="page">总览</a>
       <a id="view-thermal" href="#thermal">动力煤</a>
       <a id="view-coking" href="#coking">炼焦煤</a>
+      <a id="view-overseas" href="#overseas">海外能源</a>
+      <a id="view-supply" href="#supply">产量及进口</a>
     </nav>
     <div id="overview-view">
     <section aria-labelledby="snapshot-title">
@@ -52,8 +54,10 @@
       <div class="section-heading"><div><p class="eyebrow">WEEKLY CHARTS</p><h2 id="trends-title">周报图表</h2></div><span>图项和指标来自“周报输出”</span></div>
       <form id="date-filter" class="filter-bar">
         <span class="filter-label">连续走势图区间</span>
-        <div class="range-buttons" role="group" aria-label="快捷日期范围"><button type="button" data-years="1" class="selected" aria-pressed="true">近一年</button><button type="button" data-years="3" aria-pressed="false">近三年</button><button type="button" data-years="all" aria-pressed="false">全部</button></div>
-        <div class="date-fields"><label><span class="sr-only">开始日期</span><input id="start-date" type="date" required></label><span aria-hidden="true">—</span><label><span class="sr-only">结束日期</span><input id="end-date" type="date" required></label><button class="apply-button" type="submit">应用</button></div>
+        <div class="range-buttons" role="group" aria-label="年份范围">
+          <button type="button" data-years="2021">2021</button><button type="button" data-years="2022">2022</button><button type="button" data-years="2023">2023</button><button type="button" data-years="2024">2024</button><button type="button" data-years="2025">2025</button><button type="button" data-years="2026">2026</button><button type="button" data-years="all">2021–2026</button>
+        </div>
+        <div class="date-fields"><label><span class="sr-only">开始日期</span><input id="start-date" type="date" min="2021-01-01" max="2026-12-31" required></label><span aria-hidden="true">—</span><label><span class="sr-only">结束日期</span><input id="end-date" type="date" min="2021-01-01" max="2026-12-31" required></label><button class="apply-button" type="submit">应用</button></div>
         <p id="date-error" class="date-error" role="alert" hidden></p>
       </form>
       <div id="charts" class="chart-grid"></div>
@@ -81,13 +85,13 @@
           <label id="thermal-series-field" for="thermal-series" hidden>指标 <select id="thermal-series"></select></label>
         </div>
         <form id="thermal-date-filter" class="filter-bar thermal-filters">
-          <div id="thermal-presets" class="range-buttons" role="group" aria-label="快捷日期范围">
-            <button type="button" data-range="1">近一年</button><button type="button" data-range="3">近三年</button><button type="button" data-range="6">近六年</button><button type="button" data-range="all">全部</button>
+          <div id="thermal-presets" class="range-buttons" role="group" aria-label="年份范围">
+            <button type="button" data-range="2021">2021</button><button type="button" data-range="2022">2022</button><button type="button" data-range="2023">2023</button><button type="button" data-range="2024">2024</button><button type="button" data-range="2025">2025</button><button type="button" data-range="2026">2026</button><button type="button" data-range="all">2021–2026</button>
           </div>
           <div class="date-fields">
-            <label for="thermal-start"><span class="sr-only">走势图开始日期</span><input id="thermal-start" type="date" required></label>
+            <label for="thermal-start"><span class="sr-only">走势图开始日期</span><input id="thermal-start" type="date" min="2021-01-01" max="2026-12-31" required></label>
             <span aria-hidden="true">—</span>
-            <label for="thermal-end"><span class="sr-only">走势图结束日期</span><input id="thermal-end" type="date" required></label>
+            <label for="thermal-end"><span class="sr-only">走势图结束日期</span><input id="thermal-end" type="date" min="2021-01-01" max="2026-12-31" required></label>
             <button class="apply-button" type="submit">应用</button>
           </div>
           <p id="thermal-date-error" class="date-error" role="alert" hidden></p>
