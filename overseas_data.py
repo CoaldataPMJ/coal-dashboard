@@ -2,7 +2,7 @@ from thermal_data import extract_detail, metric, panel, price
 
 
 OVERSEAS_GROUPS = (
-    ("oil", "国际原油", (
+    ("oil", "国际原油价格", (
         panel("prices", "国际原油价格", (
             metric(key, name, "美元/桶", "daily", "国际能源", "G", column, 4,
                    ((f"{column}2", header), (f"{column}3", "美元/桶")), cadence="market", rule="positive")
@@ -13,7 +13,7 @@ OVERSEAS_GROUPS = (
             )
         )),
     )),
-    ("gas", "海外天然气", (
+    ("gas", "海外天然气价格", (
         panel("henry-hub", "NYMEX Henry Hub", (
             price("henry-hub", "NYMEX Henry Hub", "X", "美元/百万英热单位", "W", 7,
                   "期货收盘价(连续):NYMEX天然气", 93),

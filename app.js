@@ -68,15 +68,6 @@
       $('#summary-cards').append(card);
     });
 
-    if (data.warnings?.length) {
-      $('#quality-notes').hidden = false;
-      $('#quality-summary').textContent = `数据覆盖与缺失说明（${data.warnings.length} 条）`;
-      data.warnings.forEach(warning => $('#quality-list').append(node('li', '', warning.message)));
-      $('#quality-notes').addEventListener('toggle', event => {
-        $('.expand-label').textContent = event.target.open ? '收起说明' : '展开查看';
-      });
-    }
-
     function selectRange(years) {
       state.start = years === 'all' ? '2021-01-01' : `${years}-01-01`;
       state.end = years === 'all' || overviewEnd.startsWith(String(years)) ? overviewEnd : `${years}-12-31`;
